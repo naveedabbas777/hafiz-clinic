@@ -1,0 +1,6 @@
+{
+  "name": "Hafiz Clinic - Website & Requirements System",
+  "description": "Comprehensive Hafiz Clinic (حافظ کلینک) web application featuring bilingual Urdu/English healthcare portal, online store, appointment booking, patient/doctor/admin portals, and PDF requirements generator.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
