@@ -18,16 +18,17 @@ export interface IMessage extends mongoose.Document {
 }
 
 const MessageSchema = new mongoose.Schema({
+  id: { type: String },
   senderId: { type: String, required: true },
   senderName: { type: String, required: true },
   senderRole: { type: String, required: true },
   receiverId: { type: String, required: true },
   receiverName: { type: String, required: true },
   receiverRole: { type: String, required: true },
-  text: { type: String, required: true },
+  text: { type: String, default: '' },
   attachmentUrl: { type: String },
   audioUrl: { type: String },
-  audioDuration: { type: Number },
+  audioDuration: { type: String },
   documentType: { type: String },
   reportId: { type: String },
   read: { type: Boolean, default: false },

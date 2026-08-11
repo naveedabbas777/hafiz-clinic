@@ -25,6 +25,8 @@ interface AdminPanelProps {
   onAddArticle?: (article: HealthArticle) => void;
   onDeleteArticle?: (id: string) => void;
   onUpdateAppointmentStatus?: (id: string, status: 'Pending' | 'Approved' | 'Completed' | 'Cancelled') => void;
+  onAddAppointment?: (app: Appointment) => void;
+  setActiveView?: (view: any) => void;
   language?: 'urdu' | 'english';
   setLanguage?: (lang: 'urdu' | 'english') => void;
 }
@@ -50,11 +52,35 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onAddArticle,
   onDeleteArticle,
   onUpdateAppointmentStatus,
+  onAddAppointment,
+  setActiveView,
   language = 'english',
   setLanguage,
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'users' | 'tracker' | 'doctors' | 'diseases' | 'products' | 'orders' | 'appointments' | 'articles' | 'settings'>('overview');
   const isUrdu = language === 'urdu';
+
+  // Admin Appointment Booking on Behalf of Patient State
+  const [isBookModalOpen, setIsBookModalOpen] = useState<boolean>(false);
+  const [bookPatientName, setBookPatientName] = useState<string>('');
+  const [bookPatientPhone, setBookPatientPhone] = useState<string>('');
+  const [bookPatientAge, setBookPatientAge] = useState<string>('');
+  const [bookPatientCity, setBookPatientCity] = useState<string>('فیصل آباد');
+  const [bookDoctorId, setBookDoctorId] = useState<string>('');
+  const [bookDate, setBookDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [bookTimeSlot, setBookTimeSlot] = useState<string>('صبح 10:00 بجے (Morning Slot)');
+  const [bookProblem, setBookProblem] = useState<string>('عام معائنہ و چیک اپ (General OPD Checkup)');
+  const [bookStatus, setBookStatus] = useState<'Approved' | 'Pending'>('Approved');
+  const [isSubmittingBook, setIsSubmittingBook] = useState<boolean>(false);
+  const [appointmentSearch, setAppointmentSearch] = useState<string>('');
+
+  // Register Patient Account Modal State
+  const [isRegPatientModalOpen, setIsRegPatientModalOpen] = useState<boolean>(false);
+  const [regPatientName, setRegPatientName] = useState<string>('');
+  const [regPatientUsername, setRegPatientUsername] = useState<string>('');
+  const [regPatientPhone, setRegPatientPhone] = useState<string>('');
+  const [regPatientCity, setRegPatientCity] = useState<string>('فیصل آباد');
+  const [regPatientAge, setRegPatientAge] = useState<string>('');
 
   // Article creation state
   const [newArtTitleUrdu, setNewArtTitleUrdu] = useState('');
@@ -262,6 +288,72 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     } finally {
       setIsLoggingIn(false);
     }
+  };
+
+  const handleAdminBookAppointment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bookPatientName.trim() || !bookPatientPhone.trim()) {
+      alert(isUrdu ? 'براہ کرم مریض کا نام اور فون نمبر درج کریں۔' : 'Please enter Patient Name and Phone number.');
+      return;
+    }
+    setIsSubmittingBook(true);
+
+    const docObj = doctors.find((d) => d.id === bookDoctorId) || doctors[0];
+    const docName = isUrdu ? (docObj?.nameUrdu || 'ڈاکٹر زیشان چوہدری') : (docObj?.nameEnglish || 'Dr. Zeeshan Chaudhry');
+
+    const newApp: Appointment = {
+      id: `APP-${Date.now()}`,
+      patientName: bookPatientName,
+      phone: bookPatientPhone,
+      city: bookPatientCity || (isUrdu ? 'فیصل آباد' : 'Faisalabad'),
+      doctorName: docName,
+      date: bookDate || new Date().toISOString().split('T')[0],
+      timeSlot: bookTimeSlot,
+      problem: bookProblem,
+      status: bookStatus,
+    };
+
+    if (onAddAppointment) {
+      onAddAppointment(newApp);
+    }
+
+    try {
+      await fetch('/api/appointments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newApp),
+      });
+    } catch (err) {}
+
+    setIsSubmittingBook(false);
+    setIsBookModalOpen(false);
+    setBookPatientName('');
+    setBookPatientPhone('');
+    setBookPatientAge('');
+    alert(isUrdu ? `مریض ${newApp.patientName} کی اپائنٹمنٹ کامیابی کے ساتھ بک اور ${newApp.status === 'Approved' ? 'منظور' : 'محفوظ'} کر لی گئی ہے!` : `Appointment for ${newApp.patientName} booked and ${newApp.status} successfully!`);
+  };
+
+  const handleRegisterPatient = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!regPatientName.trim()) return;
+
+    const newPatientUser = {
+      _id: `u-${Date.now()}`,
+      fullName: regPatientName,
+      username: regPatientUsername || `patient_${Date.now().toString().slice(-4)}`,
+      phone: regPatientPhone || '03000000000',
+      role: 'patient',
+      city: regPatientCity || 'فیصل آباد',
+      mrn: `MRN-${Math.floor(100000 + Math.random() * 900000)}`,
+      status: 'Active',
+    };
+
+    setUsersList([newPatientUser, ...usersList]);
+    setIsRegPatientModalOpen(false);
+    setRegPatientName('');
+    setRegPatientUsername('');
+    setRegPatientPhone('');
+    alert(isUrdu ? 'نیا مریض اکاؤنٹ رجسٹر کر دیا گیا ہے۔' : 'New Patient Account Registered Successfully!');
   };
 
   // Upload Doctor Image to Cloudinary
@@ -598,27 +690,50 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
 
           <div className="flex items-center gap-2 text-xs flex-wrap">
+            {setActiveView && (
+              <button
+                type="button"
+                onClick={() => setActiveView('home')}
+                className="bg-emerald-800 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-xl border border-emerald-600 flex items-center gap-1.5 transition-colors shadow-sm"
+              >
+                <Eye className="w-4 h-4 text-emerald-300" />
+                <span>{isUrdu ? 'پبلک ویب سائٹ دیکھیں' : 'View Public Website'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (doctors.length > 0 && !bookDoctorId) {
+                  setBookDoctorId(doctors[0].id);
+                }
+                setIsBookModalOpen(true);
+              }}
+              className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-3.5 py-2 rounded-xl flex items-center gap-1 shadow-md transition-all transform hover:scale-[1.02]"
+            >
+              <Plus className="w-4 h-4 text-slate-950 font-black" />
+              <span>{isUrdu ? 'مریض کی اپائنٹمنٹ بک کریں' : 'Book for Patient'}</span>
+            </button>
             {setLanguage && (
               <button
                 type="button"
                 onClick={() => setLanguage(isUrdu ? 'english' : 'urdu')}
-                className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-3.5 py-2 rounded-xl flex items-center gap-1 shadow"
+                className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold px-3 py-2 rounded-xl border border-slate-700 flex items-center gap-1 shadow"
               >
                 🌐 <span>{isUrdu ? 'English Mode' : 'اردو موڈ'}</span>
               </button>
             )}
             <button
               onClick={() => setIsAdminAuth(false)}
-              className="bg-emerald-800 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-xl border border-emerald-700"
+              className="bg-rose-900/80 hover:bg-rose-800 text-rose-100 font-bold px-3 py-2 rounded-xl border border-rose-700 transition-colors"
             >
               Sign Out
             </button>
             <button
               onClick={() => alert(isUrdu ? 'ڈیٹا بیس کا بیک اپ (SQL / JSON) ڈاؤن لوڈ ہو گیا ہے۔' : 'Hospital Database Backup exported successfully.')}
-              className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold px-3.5 py-2.5 rounded-xl flex items-center gap-1.5 shadow"
+              className="bg-teal-800 hover:bg-teal-700 text-white font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 border border-teal-600 shadow"
             >
-              <Database className="w-4 h-4" />
-              <span>{isUrdu ? 'ڈیٹا بیس بیک اپ (Backup)' : 'Export Backup'}</span>
+              <Database className="w-4 h-4 text-amber-300" />
+              <span>{isUrdu ? 'بیک اپ (Backup)' : 'Export Backup'}</span>
             </button>
           </div>
         </div>
@@ -654,25 +769,40 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="space-y-6">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 text-slate-900">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-200 pb-3">
-                <h3 className="font-black text-emerald-900 text-base flex items-center gap-2">
-                  <Users className="w-5 h-5 text-emerald-600" />
-                  <span>{isUrdu ? 'تمام رجسٹرڈ یوزرز و ڈاکٹرز مینیج کریں' : 'Manage User Profiles & Doctor Accounts'}</span>
-                </h3>
+                <div>
+                  <h3 className="font-black text-emerald-900 text-base flex items-center gap-2">
+                    <Users className="w-5 h-5 text-emerald-600" />
+                    <span>{isUrdu ? 'تمام رجسٹرڈ یوزرز و ڈاکٹرز مینیج کریں' : 'Manage User Profiles & Doctor Accounts'}</span>
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {isUrdu ? 'مریضوں کے اکاؤنٹس بنائیں اور حذف کریں' : 'Register and manage official hospital patient records'}
+                  </p>
+                </div>
 
-                <div className="flex gap-2 text-xs">
-                  {['all', 'patient', 'doctor', 'admin'].map((role) => (
-                    <button
-                      key={role}
-                      onClick={() => setUserRoleFilter(role)}
-                      className={`px-3 py-1.5 rounded-lg capitalize font-bold transition-colors ${
-                        userRoleFilter === role
-                          ? 'bg-emerald-700 text-white shadow-sm'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
-                    >
-                      {role}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-2 text-xs flex-wrap">
+                  <button
+                    onClick={() => setIsRegPatientModalOpen(true)}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>{isUrdu ? 'نیا مریض رجسٹر کریں' : 'Register New Patient'}</span>
+                  </button>
+
+                  <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
+                    {['all', 'patient', 'doctor', 'admin'].map((role) => (
+                      <button
+                        key={role}
+                        onClick={() => setUserRoleFilter(role)}
+                        className={`px-2.5 py-1 rounded-md capitalize font-bold transition-colors text-[11px] ${
+                          userRoleFilter === role
+                            ? 'bg-emerald-700 text-white shadow-sm'
+                            : 'text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {role}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -774,7 +904,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             {/* Tracker Navigation & Search Bar */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div className="flex bg-slate-100 p-1.5 rounded-xl text-xs font-bold gap-1">
+                <div className="flex bg-slate-100 p-1.5 rounded-xl text-xs font-bold gap-1 flex-wrap">
                   <button
                     onClick={() => setTrackerSubTab('documents')}
                     className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5 ${
@@ -782,7 +912,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     }`}
                   >
                     <FileText className="w-4 h-4 text-emerald-200" />
-                    <span>موصول شدہ ڈاکومنٹس ({allReports.length})</span>
+                    <span>{isUrdu ? `موصول شدہ ڈاکومنٹس (${allReports.length})` : `Received Documents (${allReports.length})`}</span>
                   </button>
 
                   <button
@@ -792,7 +922,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     }`}
                   >
                     <MessageSquare className="w-4 h-4 text-emerald-200" />
-                    <span>مریض و ڈاکٹر گفتگو ({allMessages.length})</span>
+                    <span>{isUrdu ? `مریض و ڈاکٹر گفتگو (${allMessages.length})` : `Patient-Doctor Messages (${allMessages.length})`}</span>
                   </button>
 
                   <button
@@ -802,7 +932,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     }`}
                   >
                     <Activity className="w-4 h-4 text-emerald-200" />
-                    <span>آڈٹ لاگز (Audit Log)</span>
+                    <span>{isUrdu ? 'آڈٹ لاگز (Audit Log)' : 'Audit Trail Logs'}</span>
                   </button>
                 </div>
 
@@ -812,8 +942,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     type="text"
                     value={trackerSearch}
                     onChange={(e) => setTrackerSearch(e.target.value)}
-                    placeholder="مریض یا ڈاکٹر کا نام تلاش کریں..."
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:ring-2 focus:ring-emerald-500"
+                    placeholder={isUrdu ? 'مریض یا ڈاکٹر کا نام تلاش کریں...' : 'Search patient or doctor name...'}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-semibold"
                   />
                   <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                 </div>
@@ -829,50 +959,55 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           !trackerSearch ||
                           r.patientName?.toLowerCase().includes(trackerSearch.toLowerCase()) ||
                           r.doctorName?.toLowerCase().includes(trackerSearch.toLowerCase()) ||
-                          r.testNameUrdu?.toLowerCase().includes(trackerSearch.toLowerCase())
+                          r.testNameUrdu?.toLowerCase().includes(trackerSearch.toLowerCase()) ||
+                          (r.testNameEng && r.testNameEng.toLowerCase().includes(trackerSearch.toLowerCase()))
                       )
                       .map((rep) => (
-                        <div key={rep._id || rep.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-700 space-y-3">
+                        <div key={rep._id || rep.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3 shadow-xs">
                           <div className="flex justify-between items-start">
                             <div>
-                              <div className="font-black text-white text-sm">{rep.patientName}</div>
-                              <div className="text-emerald-400 font-bold">{rep.testNameUrdu}</div>
-                              <div className="text-[11px] text-slate-400">معالج ڈاکٹر: {rep.doctorName || 'ڈاکٹر زیشان چوہدری'}</div>
+                              <div className="font-black text-slate-900 text-sm">{rep.patientName}</div>
+                              <div className="text-emerald-700 font-bold">{isUrdu ? rep.testNameUrdu : (rep.testNameEng || rep.testNameUrdu)}</div>
+                              <div className="text-[11px] text-slate-500 font-medium">
+                                {isUrdu ? `معالج ڈاکٹر: ${rep.doctorName || 'ڈاکٹر زیشان چوہدری'}` : `Attending Doctor: ${rep.doctorName || 'Dr. Zeeshan Chaudhry'}`}
+                              </div>
                             </div>
                             <span
                               className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                                 rep.status === 'Reviewed'
-                                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                                  : 'bg-amber-950 text-amber-300 border border-amber-800'
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                  : 'bg-amber-100 text-amber-800 border border-amber-300'
                               }`}
                             >
                               {rep.status}
                             </span>
                           </div>
 
-                          <p className="text-slate-300 bg-slate-950 p-2.5 rounded-xl border border-slate-800">{rep.summary || 'پورٹل ڈاکومنٹ'}</p>
+                          <p className="text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200">{rep.summary || (isUrdu ? 'پورٹل ڈاکومنٹ' : 'Portal Document Attachment')}</p>
 
                           {rep.fileUrl && (() => {
                             const isPdf = rep.fileUrl.toLowerCase().includes('.pdf') || rep.fileUrl.startsWith('data:application/pdf');
                             if (isPdf) {
                               return (
-                                <div className="p-3 bg-slate-900 border border-slate-700 rounded-xl space-y-2">
+                                <div className="p-3 bg-white border border-slate-200 rounded-xl space-y-2">
                                   <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-red-600/20 text-red-400 rounded-lg">
+                                    <div className="p-2 bg-rose-50 text-rose-600 rounded-lg">
                                       <FileText className="w-6 h-6" />
                                     </div>
                                     <div>
-                                      <p className="text-xs font-bold text-white">PDF میڈیکل رپورٹ ڈاکومنٹ</p>
-                                      <p className="text-[10px] text-slate-400">PDF Medical File Attachment</p>
+                                      <p className="text-xs font-bold text-slate-900">
+                                        {isUrdu ? 'PDF میڈیکل رپورٹ ڈاکومنٹ' : 'PDF Medical File Attachment'}
+                                      </p>
+                                      <p className="text-[10px] text-slate-500">PDF Medical File Document</p>
                                     </div>
                                   </div>
                                   <a
                                     href={rep.fileUrl}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="block text-center bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-1.5 rounded-xl text-[11px]"
+                                    className="block text-center bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-1.5 rounded-xl text-[11px] shadow-sm transition-colors"
                                   >
-                                    🔗 اصل PDF ڈاکومنٹ دیکھیں / ڈاؤن لوڈ کریں
+                                    🔗 {isUrdu ? 'اصل PDF ڈاکومنٹ دیکھیں / ڈاؤن لوڈ کریں' : 'View / Download PDF Document'}
                                   </a>
                                 </div>
                               );
@@ -882,27 +1017,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <img
                                   src={rep.fileUrl}
                                   alt="Report Attachment"
-                                  className="w-full h-36 object-cover rounded-xl border border-slate-800"
+                                  className="w-full h-36 object-cover rounded-xl border border-slate-200"
                                 />
                                 <a
                                   href={rep.fileUrl}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="block text-center bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-1.5 rounded-xl text-[11px]"
+                                  className="block text-center bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-1.5 rounded-xl text-[11px] shadow-sm transition-colors"
                                 >
-                                  🔗 اصل ڈاکومنٹ کھولیں / ڈاؤن لوڈ کریں (Open / Download File)
+                                  🔗 {isUrdu ? 'اصل ڈاکومنٹ کھولیں / ڈاؤن لوڈ کریں' : 'Open / Download Attachment File'}
                                 </a>
                               </div>
                             );
                           })()}
 
                           {rep.doctorComment && (
-                            <div className="bg-teal-950/80 p-2.5 rounded-xl border border-teal-800 text-teal-200">
-                              <span className="font-bold">ڈاکٹر کا تحریری تبصرہ:</span> {rep.doctorComment}
+                            <div className="bg-teal-50 p-2.5 rounded-xl border border-teal-200 text-teal-900 text-[11px]">
+                              <span className="font-bold">{isUrdu ? 'ڈاکٹر کا تحریری تبصرہ:' : 'Doctor Remarks:'}</span> {rep.doctorComment}
                             </div>
                           )}
 
-                          <div className="text-[10px] text-slate-500 font-mono text-right">تاریخ: {rep.date || '2026-08-08'}</div>
+                          <div className="text-[10px] text-slate-400 font-mono text-right">{isUrdu ? 'تاریخ:' : 'Date:'} {rep.date || '2026-08-08'}</div>
                         </div>
                       ))}
                   </div>
@@ -915,7 +1050,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <div className="bg-emerald-900 p-4 rounded-2xl text-white flex justify-between items-center text-xs shadow-md">
                     <span className="font-bold flex items-center gap-2">
                       <MessageSquare className="w-4 h-4 text-emerald-200" />
-                      <span>آن لائن طبی سیشن و ڈاکومنٹ مانیٹر (Official Telemedicine Monitor)</span>
+                      <span>{isUrdu ? 'آن لائن طبی سیشن و ڈاکومنٹ مانیٹر (Official Telemedicine Monitor)' : 'Online Telemedicine Sessions & Communications Monitor'}</span>
                     </span>
                     <span className="bg-amber-400 text-slate-950 font-bold px-3 py-1 rounded-full">
                       Real-time Consultation Inspector
@@ -923,14 +1058,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
 
                   <DoctorPatientChatView
-                    currentUser={{ role: 'doctor', id: 'admin-monitor', name: 'ایڈمن کنٹرول مانیٹر' }}
+                    currentUser={{ role: 'doctor', id: 'admin-monitor', name: isUrdu ? 'ایڈمن کنٹرول مانیٹر' : 'Admin Telemedicine Inspector' }}
                     doctors={doctors}
                     language={language}
                   />
 
                   {/* Summary of Hospital Messages */}
-                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                    <h4 className="font-bold text-emerald-900 text-xs">سسٹم ڈیٹا بیس میں محفوظ شد لائیو چیٹ لاگز ({allMessages.length} Messages):</h4>
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <h4 className="font-bold text-emerald-900 text-xs">
+                      {isUrdu ? `سستم ڈیٹا بیس میں محفوظ شد لائیو چیٹ لاگز (${allMessages.length} Messages):` : `Archived Telemedicine Live Chat Logs (${allMessages.length} Messages):`}
+                    </h4>
                     <div className="max-h-60 overflow-y-auto space-y-2">
                       {allMessages
                         .filter(
@@ -941,7 +1078,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             m.text?.toLowerCase().includes(trackerSearch.toLowerCase())
                         )
                         .map((msg, i) => (
-                          <div key={msg._id || i} className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1">
+                          <div key={msg._id || i} className="bg-white p-3 rounded-xl border border-slate-200 text-xs space-y-1">
                             <div className="flex justify-between items-center text-[10px]">
                               <div className="flex items-center gap-1.5 font-bold">
                                 <span className="text-emerald-800">{msg.senderName}</span>
@@ -959,7 +1096,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 className="inline-flex items-center gap-1 text-[10px] text-emerald-700 underline font-mono font-bold"
                               >
                                 <Paperclip className="w-3 h-3" />
-                                <span>منسلک شدہ فائل دیکھیں (View Attached File)</span>
+                                <span>{isUrdu ? 'منسلک شدہ فائل دیکھیں (View Attached File)' : 'View Attached Document / File'}</span>
                               </a>
                             )}
                           </div>
@@ -971,19 +1108,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
               {/* SUB-TAB 3: AUDIT TRAIL LOGS */}
               {trackerSubTab === 'logs' && (
-                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3 text-xs">
-                  <h4 className="font-bold text-emerald-900 border-b border-slate-200 pb-2">سسٹم پورٹل و ڈاکومنٹ سیکورٹی لاگز (System Telemedicine Audit Trail)</h4>
+                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3 text-xs">
+                  <h4 className="font-bold text-emerald-900 border-b border-slate-200 pb-2">
+                    {isUrdu ? 'سسٹم پورٹل و ڈاکومنٹ سیکورٹی لاگز (System Telemedicine Audit Trail)' : 'System Telemedicine Audit Trail & Security Logs'}
+                  </h4>
                   <div className="space-y-2 font-mono text-[11px]">
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex justify-between text-slate-800">
-                      <span>[2026-08-08 11:42:10] Document Uploaded: 'بائیو کوانٹم باڈی اسکین' by Patient 'محمد فاروق'</span>
+                    <div className="p-2.5 bg-white rounded-xl border border-slate-200 flex justify-between text-slate-800">
+                      <span>
+                        {isUrdu
+                          ? "[2026-08-08 11:42:10] Document Uploaded: 'بائیو کوانٹم باڈی اسکین' by Patient 'محمد فاروق'"
+                          : "[2026-08-08 11:42:10] Document Uploaded: 'Bio Quantum Body Scan' by Patient 'Muhammad Farooq'"}
+                      </span>
                       <span className="text-emerald-700 font-bold">STATUS: OK</span>
                     </div>
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex justify-between text-slate-800">
-                      <span>[2026-08-08 11:40:05] Direct Message Sent: Dr. Zeeshan Chaudhry ➔ Patient 'محمد فاروق'</span>
+                    <div className="p-2.5 bg-white rounded-xl border border-slate-200 flex justify-between text-slate-800">
+                      <span>
+                        {isUrdu
+                          ? "[2026-08-08 11:40:05] Direct Message Sent: Dr. Zeeshan Chaudhry ➔ Patient 'محمد فاروق'"
+                          : "[2026-08-08 11:40:05] Direct Message Sent: Dr. Zeeshan Chaudhry ➔ Patient 'Muhammad Farooq'"}
+                      </span>
                       <span className="text-emerald-700 font-bold">STATUS: DELIVERED</span>
                     </div>
-                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 flex justify-between text-slate-800">
-                      <span>[2026-08-08 10:15:30] Doctor Prescription Created: Dr. Zeeshan Chaudhry for Patient 'کامران خان'</span>
+                    <div className="p-2.5 bg-white rounded-xl border border-slate-200 flex justify-between text-slate-800">
+                      <span>
+                        {isUrdu
+                          ? "[2026-08-08 10:15:30] Doctor Prescription Created: Dr. Zeeshan Chaudhry for Patient 'کامران خان'"
+                          : "[2026-08-08 10:15:30] Doctor Prescription Created: Dr. Zeeshan Chaudhry for Patient 'Kamran Khan'"}
+                      </span>
                       <span className="text-emerald-700 font-bold">STATUS: STORED</span>
                     </div>
                   </div>
@@ -1520,11 +1671,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {/* Products CRUD */}
         {activeTab === 'products' && (
           <div className="space-y-6">
-            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-700 pb-3">
-                <h3 className="font-bold text-amber-400 text-base flex items-center gap-2">
-                  <ShoppingCart className="w-5 h-5 text-emerald-400" />
-                  <span>{isUrdu ? 'نئی ہربل پروڈکٹ و امیج اپلوڈ (Add Product & Upload Image to Category)' : 'Add New E-Commerce Product with Category & Cloudinary Photo'}</span>
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 text-slate-900">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                <h3 className="font-bold text-emerald-900 text-base flex items-center gap-2">
+                  <ShoppingCart className="w-5 h-5 text-emerald-600" />
+                  <span>{isUrdu ? 'نئی ہربل پروڈکٹ و امیج اپلوڈ (Add Product & Upload Image to Category)' : 'Add New Product to Store Catalog'}</span>
                 </h3>
               </div>
 
@@ -1534,27 +1685,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {/* Title Inputs */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-slate-300 font-bold mb-1">
-                        نام اردو (Product Urdu Title) *
+                      <label className="block text-slate-700 font-bold mb-1">
+                        {isUrdu ? 'نام اردو (Product Urdu Title) *' : 'Product Title (Urdu) *'}
                       </label>
                       <input
                         type="text"
-                        placeholder="مثلاً: ہوراب بیوٹی ہربل سوپ"
+                        placeholder={isUrdu ? 'مثلاً: ہوراب بیوٹی ہربل سوپ' : 'Title in Urdu'}
                         value={newProdNameUrdu}
                         onChange={(e) => setNewProdNameUrdu(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-white font-bold focus:ring-2 focus:ring-emerald-500"
+                        className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-300 font-bold mb-1">
-                        Name English (Product English Title) *
+                      <label className="block text-slate-700 font-bold mb-1">
+                        {isUrdu ? 'Name English (Product English Title) *' : 'Product Title (English) *'}
                       </label>
                       <input
                         type="text"
                         placeholder="e.g. Hoorab Herbal Beauty Soap"
                         value={newProdNameEng}
                         onChange={(e) => setNewProdNameEng(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-white font-bold focus:ring-2 focus:ring-emerald-500"
+                        className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       />
                     </div>
                   </div>
@@ -1562,60 +1713,60 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {/* Category Selector */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-slate-300 font-bold mb-1">
-                        کیٹیگری منتخب کریں (Select Product Category) *
+                      <label className="block text-slate-700 font-bold mb-1">
+                        {isUrdu ? 'کیٹیگری منتخب کریں (Select Product Category) *' : 'Select Category *'}
                       </label>
                       <select
                         value={newProdCategory}
                         onChange={(e) => setNewProdCategory(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-white font-bold"
+                        className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold"
                       >
-                        <option value="skin">🌿 بیوٹی کریم و اسکن کیئر (Skin Care & Creams)</option>
-                        <option value="hair">💇‍♂️ ہیئر کیئر و ہیئر آئل (Hair Care & Hair Oils)</option>
-                        <option value="eye">👁️ آئی کیئر و نظر کے نقشے (Eye Care)</option>
-                        <option value="perfume">🌸 پرفیوم و خالص عطر (Perfumes & Attars)</option>
-                        <option value="pain">🦴 درد شفا تیل و بام (Pain Relief Oils)</option>
-                        <option value="general">💊 عمومی ہربل دوا (General Products)</option>
-                        <option value="custom">➕ نئی کسٹم کیٹیگری داخل کریں (Custom Category)</option>
+                        <option value="skin">{isUrdu ? '🌿 بیوٹی کریم و اسکن کیئر (Skin Care & Creams)' : '🌿 Skin Care & Beauty Creams'}</option>
+                        <option value="hair">{isUrdu ? '💇‍♂️ ہیئر کیئر و ہیئر آئل (Hair Care & Hair Oils)' : '💇‍♂️ Hair Care & Hair Oils'}</option>
+                        <option value="eye">{isUrdu ? '👁️ آئی کیئر و نظر کے نقشے (Eye Care)' : '👁️ Eye Care & Vision'}</option>
+                        <option value="perfume">{isUrdu ? '🌸 پرفیوم و خالص عطر (Perfumes & Attars)' : '🌸 Perfumes & Attars'}</option>
+                        <option value="pain">{isUrdu ? '🦴 درد شفا تیل و بام (Pain Relief Oils)' : '🦴 Joint & Pain Relief'}</option>
+                        <option value="general">{isUrdu ? '💊 عمومی ہربل دوا (General Products)' : '💊 General Herbal Remedies'}</option>
+                        <option value="custom">{isUrdu ? '➕ نئی کسٹم کیٹیگری داخل کریں (Custom Category)' : '➕ Custom Category'}</option>
                       </select>
                     </div>
 
                     {/* Stock Input */}
                     <div>
-                      <label className="block text-slate-300 font-bold mb-1">
-                        اسٹاک تعداد (In Stock Quantity)
+                      <label className="block text-slate-700 font-bold mb-1">
+                        {isUrdu ? 'اسٹاک تعداد (In Stock Quantity)' : 'In-Stock Quantity'}
                       </label>
                       <input
                         type="number"
                         placeholder="50"
                         value={newProdStock}
                         onChange={(e) => setNewProdStock(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-white font-mono"
+                        className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-mono"
                       />
                     </div>
                   </div>
 
                   {/* If Custom Category selected */}
                   {newProdCategory === 'custom' && (
-                    <div className="p-3 bg-slate-950 border border-amber-500/40 rounded-xl grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                       <div>
-                        <label className="block text-amber-300 font-bold mb-1">Custom Category ID (English)</label>
+                        <label className="block text-amber-900 font-bold mb-1">{isUrdu ? 'Custom Category ID (English)' : 'Category ID (English)'}</label>
                         <input
                           type="text"
                           placeholder="soaps / syrups"
                           value={customProdCatId}
                           onChange={(e) => setCustomProdCatId(e.target.value)}
-                          className="w-full bg-slate-900 border border-slate-700 p-2 rounded-lg text-white font-mono"
+                          className="w-full bg-white border border-amber-300 p-2 rounded-lg text-slate-900 font-mono"
                         />
                       </div>
                       <div>
-                        <label className="block text-amber-300 font-bold mb-1">کیٹیگری نام (Urdu Label)</label>
+                        <label className="block text-amber-900 font-bold mb-1">{isUrdu ? 'کیٹیگری نام (Urdu Label)' : 'Category Name (Urdu)'}</label>
                         <input
                           type="text"
                           placeholder="ہربل صابن و شیمپو"
                           value={customProdCatUrdu}
                           onChange={(e) => setCustomProdCatUrdu(e.target.value)}
-                          className="w-full bg-slate-900 border border-slate-700 p-2 rounded-lg text-white font-bold"
+                          className="w-full bg-white border border-amber-300 p-2 rounded-lg text-slate-900 font-bold"
                         />
                       </div>
                     </div>
@@ -1624,27 +1775,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {/* Pricing Inputs */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-slate-300 font-bold mb-1">
-                        قیمت PKR (Price in Rupees) *
+                      <label className="block text-slate-700 font-bold mb-1">
+                        {isUrdu ? 'قیمت PKR (Price in Rupees) *' : 'Price (PKR) *'}
                       </label>
                       <input
                         type="number"
                         placeholder="1500"
                         value={newProdPrice}
                         onChange={(e) => setNewProdPrice(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-amber-400 font-mono font-black"
+                        className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-emerald-800 font-mono font-black"
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-300 mb-1 font-bold">
-                        اصل قیمت PKR (Original Price - Optional)
+                      <label className="block text-slate-700 mb-1 font-bold">
+                        {isUrdu ? 'اصل قیمت PKR (Original Price - Optional)' : 'Original Price (PKR - Optional)'}
                       </label>
                       <input
                         type="number"
                         placeholder="2000"
                         value={newProdOrigPrice}
                         onChange={(e) => setNewProdOrigPrice(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-slate-400 font-mono"
+                        className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-600 font-mono"
                       />
                     </div>
                   </div>
@@ -1652,48 +1803,48 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {/* Description Inputs */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-slate-300 mb-1">تفصیل اردو (Description Urdu)</label>
+                      <label className="block text-slate-700 mb-1 font-bold">{isUrdu ? 'تفصیل اردو (Description Urdu)' : 'Description (Urdu)'}</label>
                       <textarea
                         rows={2}
-                        placeholder="100% خالص ہربل فارمولیشن۔"
+                        placeholder={isUrdu ? '100% خالص ہربل فارمولیشن۔' : 'Urdu description text...'}
                         value={newProdDescUrdu}
                         onChange={(e) => setNewProdDescUrdu(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-white text-xs"
+                        className="w-full bg-slate-50 border border-slate-300 p-2 rounded-xl text-slate-900 text-xs"
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-300 mb-1">Description English</label>
+                      <label className="block text-slate-700 mb-1 font-bold">{isUrdu ? 'Description English' : 'Description (English)'}</label>
                       <textarea
                         rows={2}
                         placeholder="100% Organic Natural Product."
                         value={newProdDescEng}
                         onChange={(e) => setNewProdDescEng(e.target.value)}
-                        className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-white text-xs"
+                        className="w-full bg-slate-50 border border-slate-300 p-2 rounded-xl text-slate-900 text-xs"
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* Cloudinary Image Picker Box */}
-                <div className="bg-slate-900 p-4 rounded-xl border border-slate-700 space-y-3 flex flex-col justify-between">
+                {/* Image Picker Box */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 flex flex-col justify-between">
                   <div>
-                    <label className="block font-bold text-slate-300 mb-2">
-                      پروڈکٹ تصویر (Cloudinary Image):
+                    <label className="block font-bold text-slate-700 mb-2">
+                      {isUrdu ? 'پروڈکٹ تصویر (Cloudinary Image):' : 'Product Photo / Image:'}
                     </label>
 
                     {newProdImage ? (
-                      <div className="relative w-32 h-32 rounded-2xl overflow-hidden border-2 border-emerald-500 mx-auto bg-slate-950">
+                      <div className="relative w-32 h-32 rounded-2xl overflow-hidden border-2 border-emerald-500 mx-auto bg-white shadow-sm">
                         <img src={newProdImage} alt="Product preview" className="w-full h-full object-cover" />
                         {prodUploadSuccess && (
                           <span className="absolute bottom-0 inset-x-0 bg-emerald-600 text-white text-[9px] font-bold text-center py-0.5">
-                            Cloudinary Uploaded
+                            Uploaded
                           </span>
                         )}
                       </div>
                     ) : (
-                      <div className="w-32 h-32 rounded-2xl border-2 border-dashed border-slate-700 flex flex-col items-center justify-center mx-auto text-slate-500 p-2 text-center text-[10px]">
-                        <ImageIcon className="w-8 h-8 mb-1 text-slate-600" />
-                        <span>کوئی تصویر نہیں چنی گئی</span>
+                      <div className="w-32 h-32 rounded-2xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center mx-auto text-slate-400 p-2 text-center text-[10px] bg-white">
+                        <ImageIcon className="w-8 h-8 mb-1 text-slate-400" />
+                        <span>{isUrdu ? 'کوئی تصویر نہیں چنی گئی' : 'No photo selected'}</span>
                       </div>
                     )}
                   </div>
@@ -1711,17 +1862,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       className="w-full bg-teal-700 hover:bg-teal-600 text-white font-bold py-2 px-3 rounded-xl cursor-pointer flex items-center justify-center gap-1.5 text-xs text-center shadow"
                     >
                       <Upload className="w-3.5 h-3.5" />
-                      <span>{isUploadingProdImg ? 'Uploading to Cloudinary...' : 'Upload Product Photo'}</span>
+                      <span>{isUploadingProdImg ? 'Uploading photo...' : isUrdu ? 'تصویر اپلوڈ کریں' : 'Upload Product Photo'}</span>
                     </label>
 
                     <div className="pt-1">
-                      <label className="block text-[10px] text-slate-400 mb-0.5">یا براہ راست تصویر کا URL درج کریں:</label>
+                      <label className="block text-[10px] text-slate-500 mb-0.5">{isUrdu ? 'یا تصویر کا URL درج کریں:' : 'Or enter direct Image URL:'}</label>
                       <input
                         type="text"
                         placeholder="https://..."
                         value={newProdImage}
                         onChange={(e) => setNewProdImage(e.target.value)}
-                        className="w-full bg-slate-950 border border-slate-800 p-2 rounded-lg text-[10px] text-slate-300 font-mono"
+                        className="w-full bg-white border border-slate-300 p-2 rounded-lg text-[10px] text-slate-800 font-mono"
                       />
                     </div>
                   </div>
@@ -1729,13 +1880,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
 
               {/* Save Button */}
-              <div className="pt-2 border-t border-slate-700/60 flex justify-end">
+              <div className="pt-2 border-t border-slate-200 flex justify-end">
                 <button
                   onClick={handleCreateProd}
                   className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-8 py-3 rounded-xl text-xs shadow-lg flex items-center gap-2"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>{isUrdu ? 'پروڈکٹ کو کیٹیگری میں محفوظ کریں (Save Product)' : 'Save Product to Category & Database'}</span>
+                  <span>{isUrdu ? 'پروڈکٹ کو کیٹیگری میں محفوظ کریں (Save Product)' : 'Save Product to Catalog'}</span>
                 </button>
               </div>
             </div>
@@ -1743,28 +1894,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             {/* List of Products */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-xs">
               {products.map((p) => (
-                <div key={p.id} className="bg-slate-800 p-4 rounded-2xl border border-slate-700 flex justify-between items-center gap-3">
+                <div key={p.id} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center gap-3">
                   <div className="flex items-center gap-3">
                     <img
                       src={p.image || 'https://images.unsplash.com/photo-1608248597260-1e43d7907572?auto=format&fit=crop&q=80&w=600'}
                       alt={p.nameEnglish}
-                      className="w-14 h-14 rounded-xl object-cover border border-slate-700 shrink-0"
+                      className="w-14 h-14 rounded-xl object-cover border border-slate-200 shrink-0"
                     />
                     <div>
-                      <div className="font-bold text-white text-sm">
+                      <div className="font-bold text-slate-900 text-sm">
                         {isUrdu ? p.nameUrdu : p.nameEnglish}
                       </div>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded text-[10px] font-bold border border-emerald-800">
-                          {p.categoryUrdu || p.category}
+                        <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[10px] font-bold border border-emerald-300">
+                          {isUrdu ? p.categoryUrdu || p.category : p.category}
                         </span>
-                        <span className="text-amber-400 font-black">Rs. {p.pricePKR}</span>
+                        <span className="text-amber-700 font-black">Rs. {p.pricePKR}</span>
                       </div>
                     </div>
                   </div>
                   <button
                     onClick={() => onDeleteProduct(p.id)}
-                    className="p-2 bg-red-900/50 hover:bg-red-800 text-red-200 rounded-lg transition-colors"
+                    className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg transition-colors border border-rose-200"
                     title="Delete Product"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -1777,38 +1928,38 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
         {/* Orders Tab */}
         {activeTab === 'orders' && (
-          <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 space-y-4">
-            <h3 className="font-bold text-base text-amber-400">
-              {isUrdu ? 'آن لائن آرڈرز کی فہرست (Customer Orders)' : 'Received Customer E-Commerce Orders'}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 text-slate-900">
+            <h3 className="font-bold text-base text-emerald-900">
+              {isUrdu ? 'آن لائن آرڈرز کی فہرست (Customer Orders)' : 'Received Customer Store Orders'}
             </h3>
             <div className="overflow-x-auto text-xs">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-700 text-slate-400">
+                  <tr className="border-b border-slate-200 text-slate-500 font-bold">
                     <th className="p-2.5">{isUrdu ? 'آرڈر نمبر' : 'Order ID'}</th>
                     <th className="p-2.5">{isUrdu ? 'گاہک' : 'Customer Name'}</th>
                     <th className="p-2.5">{isUrdu ? 'فون' : 'Phone'}</th>
                     <th className="p-2.5">{isUrdu ? 'شہر' : 'City / Address'}</th>
                     <th className="p-2.5">{isUrdu ? 'آئٹمز' : 'Ordered Items'}</th>
                     <th className="p-2.5">{isUrdu ? 'کل رقم' : 'Total Price'}</th>
-                    <th className="p-2.5">{isUrdu ? 'ادائیگی' : 'Payment'}</th>
+                    <th className="p-2.5">{isUrdu ? 'ادائیگی' : 'Payment Method'}</th>
                     <th className="p-2.5">{isUrdu ? 'اسٹیٹس' : 'Status'}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {orders.map((ord) => (
-                    <tr key={ord.id} className="border-b border-slate-700/50 hover:bg-slate-700/30">
-                      <td className="p-2.5 font-mono text-amber-300 font-bold">{ord.id}</td>
-                      <td className="p-2.5 font-bold">{ord.customerName}</td>
-                      <td className="p-2.5 font-mono text-slate-300">{ord.phone}</td>
-                      <td className="p-2.5 text-slate-300">{ord.city} - {ord.address}</td>
-                      <td className="p-2.5 text-emerald-300">
+                    <tr key={ord.id} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="p-2.5 font-mono text-amber-700 font-bold">{ord.id}</td>
+                      <td className="p-2.5 font-bold text-slate-900">{ord.customerName}</td>
+                      <td className="p-2.5 font-mono text-slate-700">{ord.phone}</td>
+                      <td className="p-2.5 text-slate-700">{ord.city} - {ord.address}</td>
+                      <td className="p-2.5 text-emerald-800 font-semibold">
                         {ord.items.map((i) => `${i.productName} (x${i.quantity})`).join(', ')}
                       </td>
-                      <td className="p-2.5 font-black text-amber-400">Rs. {ord.totalPricePKR}</td>
-                      <td className="p-2.5 font-semibold text-slate-300">{ord.paymentMethod}</td>
+                      <td className="p-2.5 font-black text-amber-800">Rs. {ord.totalPricePKR}</td>
+                      <td className="p-2.5 font-semibold text-slate-700">{ord.paymentMethod}</td>
                       <td className="p-2.5">
-                        <span className="bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800 text-[10px] font-bold">
+                        <span className="bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded border border-emerald-300 text-[10px] font-bold">
                           {ord.status}
                         </span>
                       </td>
@@ -1823,14 +1974,43 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {/* Appointments Tab */}
         {activeTab === 'appointments' && (
           <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 space-y-4">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-              <h3 className="font-bold text-base text-amber-400 flex items-center gap-2">
-                <Clock className="w-5 h-5 text-emerald-400" />
-                <span>{isUrdu ? 'آن لائن اپائنٹمنٹس کیو و منظوری (Appointments Queue & Approval)' : 'Manage Online Clinic Appointments'}</span>
-              </h3>
-              <span className="text-xs bg-slate-900 text-slate-300 font-mono px-3 py-1 rounded-full border border-slate-700">
-                Total Queue: {appointments.length}
-              </span>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 border-b border-slate-700/80 pb-4">
+              <div>
+                <h3 className="font-bold text-base text-amber-400 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-emerald-400" />
+                  <span>{isUrdu ? 'آن لائن اپائنٹمنٹس کیو و منظوری (Appointments Queue & Control)' : 'Manage Online Clinic Appointments'}</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {isUrdu ? 'مریضوں کی طرف سے خود اپائنٹمنٹ بک کریں یا موجودہ کیو منظور کریں' : 'Book appointments on behalf of patients and approve pending queues'}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
+                {/* Search Bar */}
+                <div className="relative flex-1 md:w-64">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    value={appointmentSearch}
+                    onChange={(e) => setAppointmentSearch(e.target.value)}
+                    placeholder={isUrdu ? 'تلاش (مریض، فون، ڈاکٹر)...' : 'Search patient, phone, doctor...'}
+                    className="w-full bg-slate-900 border border-slate-700 pl-9 pr-3 py-2 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <button
+                  onClick={() => {
+                    if (doctors.length > 0 && !bookDoctorId) {
+                      setBookDoctorId(doctors[0].id);
+                    }
+                    setIsBookModalOpen(true);
+                  }}
+                  className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all shrink-0"
+                >
+                  <Plus className="w-4 h-4 text-slate-950 font-black" />
+                  <span>{isUrdu ? 'مریض کی طرف سے اپائنٹمنٹ لیں' : 'Book on Behalf of Patient'}</span>
+                </button>
+              </div>
             </div>
 
             <div className="overflow-x-auto text-xs">
@@ -1849,7 +2029,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </tr>
                 </thead>
                 <tbody>
-                  {appointments.map((app, idx) => {
+                  {appointments
+                    .filter((app) => {
+                      if (!appointmentSearch.trim()) return true;
+                      const q = appointmentSearch.toLowerCase();
+                      return (
+                        (app.patientName && app.patientName.toLowerCase().includes(q)) ||
+                        (app.phone && app.phone.includes(q)) ||
+                        (app.doctorName && app.doctorName.toLowerCase().includes(q)) ||
+                        (app.city && app.city.toLowerCase().includes(q)) ||
+                        (app.problem && app.problem.toLowerCase().includes(q))
+                      );
+                    })
+                    .map((app, idx) => {
                     const displayId = app.id && app.id.startsWith('APP-') ? app.id : `APP-${String(idx + 1).padStart(3, '0')}`;
                     return (
                       <tr key={app.id || idx} className="border-b border-slate-700/50 hover:bg-slate-700/30">
@@ -1877,7 +2069,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           <div className="flex items-center justify-center gap-1">
                             <button
                               onClick={() => {
-                                if (onUpdateAppointmentStatus) onUpdateAppointmentStatus(app.id, 'Approved');
+                                const targetId = app.id || (app as any)._id;
+                                if (onUpdateAppointmentStatus && targetId) onUpdateAppointmentStatus(targetId, 'Approved');
                               }}
                               className="bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded transition-colors"
                               title="منظور کریں"
@@ -1886,7 +2079,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             </button>
                             <button
                               onClick={() => {
-                                if (onUpdateAppointmentStatus) onUpdateAppointmentStatus(app.id, 'Completed');
+                                const targetId = app.id || (app as any)._id;
+                                if (onUpdateAppointmentStatus && targetId) onUpdateAppointmentStatus(targetId, 'Completed');
                               }}
                               className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold px-2 py-1 rounded transition-colors"
                               title="مکمل کریں"
@@ -1895,7 +2089,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             </button>
                             <button
                               onClick={() => {
-                                if (onUpdateAppointmentStatus) onUpdateAppointmentStatus(app.id, 'Cancelled');
+                                const targetId = app.id || (app as any)._id;
+                                if (onUpdateAppointmentStatus && targetId) onUpdateAppointmentStatus(targetId, 'Cancelled');
                               }}
                               className="bg-red-600 hover:bg-red-500 text-white text-[10px] font-bold px-2 py-1 rounded transition-colors"
                               title="منسوخ کریں"
@@ -1917,99 +2112,99 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {activeTab === 'articles' && (
           <div className="space-y-6">
             {/* Create New Article Form */}
-            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 space-y-4">
-              <h3 className="font-bold text-amber-400 text-sm flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-emerald-400" />
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 text-slate-900">
+              <h3 className="font-bold text-emerald-900 text-sm flex items-center gap-2">
+                <BookOpen className="w-4 h-4 text-emerald-600" />
                 <span>{isUrdu ? 'نیا بلاگ مضمون تحریر کریں (Add New Health Article)' : 'Publish New Health Article'}</span>
               </h3>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs font-semibold">
                 <div>
-                  <label className="block text-slate-300 mb-1">{isUrdu ? 'مضمون کا عنوان (اردو)*' : 'Article Title (Urdu)*'}</label>
+                  <label className="block text-slate-700 mb-1">{isUrdu ? 'مضمون کا عنوان (اردو)*' : 'Article Title (Urdu)*'}</label>
                   <input
                     type="text"
                     required
                     value={newArtTitleUrdu}
                     onChange={(e) => setNewArtTitleUrdu(e.target.value)}
                     placeholder={isUrdu ? 'مثلاً: جوڑوں کے درد سے نجات کے 5 طریقے' : 'e.g. Relief Knee Pain Naturally'}
-                    className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-white font-bold"
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 mb-1">{isUrdu ? 'مضمون کا عنوان (انگلش)' : 'Article Title (English)'}</label>
+                  <label className="block text-slate-700 mb-1">{isUrdu ? 'مضمون کا عنوان (انگلش)' : 'Article Title (English)'}</label>
                   <input
                     type="text"
                     value={newArtTitleEng}
                     onChange={(e) => setNewArtTitleEng(e.target.value)}
                     placeholder="Title in English"
-                    className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-white"
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 mb-1">{isUrdu ? 'کیٹیگری' : 'Category'}</label>
+                  <label className="block text-slate-700 mb-1">{isUrdu ? 'کیٹیگری' : 'Category'}</label>
                   <select
                     value={newArtCategory}
                     onChange={(e) => setNewArtCategory(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-white font-bold"
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold"
                   >
-                    <option value="درد اور مہرے">درد اور مہرے (Joint & Pain)</option>
-                    <option value="آئی کیئر">آئی کیئر (Eye Care)</option>
-                    <option value="کمپیوٹر چیک اپ">کمپیوٹر چیک اپ (Diagnostics)</option>
-                    <option value="معدہ و جگر">معدہ و جگر (Gastro & Liver)</option>
-                    <option value="ہیئر کیئر">ہیئر کیئر و سکن (Hair & Beauty)</option>
+                    <option value="درد اور مہرے">{isUrdu ? 'درد اور مہرے (Joint & Pain)' : 'Joint & Pain Relief'}</option>
+                    <option value="آئی کیئر">{isUrdu ? 'آئی کیئر (Eye Care)' : 'Eye Care & Vision'}</option>
+                    <option value="کمپیوٹر چیک اپ">{isUrdu ? 'کمپیوٹر چیک اپ (Diagnostics)' : 'Computerized Diagnostics'}</option>
+                    <option value="معدہ و جگر">{isUrdu ? 'معدہ و جگر (Gastro & Liver)' : 'Gastrointestinal & Liver'}</option>
+                    <option value="ہیئر کیئر">{isUrdu ? 'ہیئر کیئر و سکن (Hair & Beauty)' : 'Hair Care & Skin'}</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-slate-300 mb-1">{isUrdu ? 'مصنف (ڈاکٹر)' : 'Author Doctor'}</label>
+                  <label className="block text-slate-700 mb-1">{isUrdu ? 'مصنف (ڈاکٹر)' : 'Author Doctor'}</label>
                   <select
                     value={newArtAuthor}
                     onChange={(e) => setNewArtAuthor(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-white font-bold"
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold"
                   >
-                    <option value="ڈاکٹر زیشان چوہدری">ڈاکٹر زیشان چوہدری (Dr. Zeeshan Chaudhry)</option>
-                    <option value="ڈاکٹر وقاص صغیر چوہدری">ڈاکٹر وقاص صغیر چوہدری (Dr. Waqas Sageer)</option>
+                    <option value="ڈاکٹر زیشان چوہدری">{isUrdu ? 'ڈاکٹر زیشان چوہدری (Dr. Zeeshan Chaudhry)' : 'Dr. Zeeshan Chaudhry'}</option>
+                    <option value="ڈاکٹر وقاص صغیر چوہدری">{isUrdu ? 'ڈاکٹر وقاص صغیر چوہدری (Dr. Waqas Sageer)' : 'Dr. Waqas Sageer Chaudhry'}</option>
                   </select>
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block text-slate-300 mb-1">{isUrdu ? 'مختصر خلاصہ (Excerpt)' : 'Short Excerpt / Summary'}</label>
+                  <label className="block text-slate-700 mb-1">{isUrdu ? 'مختصر خلاصہ (Excerpt)' : 'Short Excerpt / Summary'}</label>
                   <input
                     type="text"
                     value={newArtExcerpt}
                     onChange={(e) => setNewArtExcerpt(e.target.value)}
                     placeholder={isUrdu ? 'مضمون کا 2 لائن کا خلاصہ ٹائپ کریں...' : 'Short 2 line summary for card preview...'}
-                    className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-white"
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900"
                   />
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block text-slate-300 mb-1">{isUrdu ? 'مکمل مضمون کا متن (Full Article Content)' : 'Full Article Body Content'}</label>
+                  <label className="block text-slate-700 mb-1">{isUrdu ? 'مکمل مضمون کا متن (Full Article Content)' : 'Full Article Body Content'}</label>
                   <textarea
                     rows={5}
                     value={newArtContent}
                     onChange={(e) => setNewArtContent(e.target.value)}
                     placeholder={isUrdu ? 'مضمون کا مکمل تفصیل، تجاویز اور نسخہ جات...' : 'Write complete detailed article body text...'}
-                    className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-white"
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900"
                   />
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block text-slate-300 mb-1">{isUrdu ? 'تصویر کا URL (Unsplash/Cloudinary)' : 'Image Banner URL'}</label>
+                  <label className="block text-slate-700 mb-1">{isUrdu ? 'تصویر کا URL (Unsplash/Cloudinary)' : 'Image Banner URL'}</label>
                   <input
                     type="text"
                     value={newArtImage}
                     onChange={(e) => setNewArtImage(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-white font-mono"
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-mono"
                   />
                 </div>
               </div>
 
               <button
                 onClick={handleCreateArticle}
-                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-2.5 rounded-xl shadow flex items-center gap-2 text-xs"
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-2.5 rounded-xl shadow flex items-center gap-2 text-xs transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 <span>{isUrdu ? 'مضمون شائع کریں (Publish Article)' : 'Publish Article'}</span>
@@ -2017,14 +2212,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
 
             {/* Articles List Table */}
-            <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 space-y-4">
-              <h3 className="font-bold text-slate-200 text-sm">
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 text-slate-900">
+              <h3 className="font-bold text-emerald-900 text-sm">
                 {isUrdu ? `شائع شدہ مضامین کی فہرست (${articles.length})` : `Published Health Articles (${articles.length})`}
               </h3>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-900 text-slate-400">
+                  <thead className="bg-slate-100 text-slate-600 font-bold">
                     <tr>
                       <th className="p-2.5">{isUrdu ? 'تصویر' : 'Banner'}</th>
                       <th className="p-2.5">{isUrdu ? 'عنوان' : 'Title'}</th>
@@ -2036,26 +2231,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </thead>
                   <tbody>
                     {articles.map((art) => (
-                      <tr key={art.id} className="border-b border-slate-700/50 hover:bg-slate-700/30">
+                      <tr key={art.id} className="border-b border-slate-100 hover:bg-slate-50">
                         <td className="p-2.5">
-                          <img src={art.image || art.imageUrl} alt={art.titleUrdu} className="w-12 h-10 object-cover rounded-md" />
+                          <img src={art.image || art.imageUrl} alt={art.titleUrdu} className="w-12 h-10 object-cover rounded-md border border-slate-200" />
                         </td>
-                        <td className="p-2.5 font-bold text-slate-100 max-w-xs truncate">
+                        <td className="p-2.5 font-bold text-slate-900 max-w-xs truncate">
                           {isUrdu ? art.titleUrdu : art.titleEnglish || art.titleUrdu}
                         </td>
-                        <td className="p-2.5 text-slate-300">{isUrdu ? art.authorUrdu || art.author : art.authorEnglish || art.author}</td>
+                        <td className="p-2.5 text-slate-700">{isUrdu ? art.authorUrdu || art.author : art.authorEnglish || art.author}</td>
                         <td className="p-2.5">
-                          <span className="bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800 text-[10px] font-bold">
-                            {art.categoryUrdu || art.category}
+                          <span className="bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded border border-emerald-300 text-[10px] font-bold">
+                            {isUrdu ? art.categoryUrdu || art.category : art.category}
                           </span>
                         </td>
-                        <td className="p-2.5 text-slate-400">{art.date}</td>
+                        <td className="p-2.5 text-slate-500 font-mono">{art.date}</td>
                         <td className="p-2.5 text-right">
                           <button
                             onClick={() => {
                               if (onDeleteArticle) onDeleteArticle(art.id);
                             }}
-                            className="text-rose-400 hover:text-rose-300 bg-rose-950/50 hover:bg-rose-900/60 p-1.5 rounded-lg transition-colors"
+                            className="text-rose-700 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 p-1.5 rounded-lg border border-rose-200 transition-colors"
                             title="Delete Article"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -2072,90 +2267,386 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
         {/* Settings Tab */}
         {activeTab === 'settings' && (
-          <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 space-y-4 text-xs font-semibold">
-            <h3 className="font-bold text-amber-400 text-sm">
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 text-xs font-semibold text-slate-900">
+            <h3 className="font-bold text-emerald-900 text-sm">
               {isUrdu ? 'کلینک بنیادی معلومات (Settings)' : 'Clinic Information & System Configuration'}
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-slate-300 mb-1">
+                <label className="block text-slate-700 mb-1">
                   {isUrdu ? 'کلینک کا نام (اردو)' : 'Clinic Name (Urdu)'}
                 </label>
                 <input
                   type="text"
                   value={settings.clinicNameUrdu}
                   onChange={(e) => onUpdateSettings({ ...settings, clinicNameUrdu: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-white font-bold"
+                  className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 mb-1">
+                <label className="block text-slate-700 mb-1">
                   {isUrdu ? 'کلینک کا نام (انگلش)' : 'Clinic Name (English)'}
                 </label>
                 <input
                   type="text"
                   value={settings.clinicNameEnglish}
                   onChange={(e) => onUpdateSettings({ ...settings, clinicNameEnglish: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-white font-bold"
+                  className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 mb-1">
+                <label className="block text-slate-700 mb-1">
                   {isUrdu ? 'فون نمبر 1' : 'Primary Phone Number'}
                 </label>
                 <input
                   type="text"
                   value={settings.phone1}
                   onChange={(e) => onUpdateSettings({ ...settings, phone1: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-white font-mono"
+                  className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-mono"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 mb-1">
+                <label className="block text-slate-700 mb-1">
                   {isUrdu ? 'واٹس ایپ نمبر' : 'WhatsApp Helpline Number'}
                 </label>
                 <input
                   type="text"
                   value={settings.whatsappNumber}
                   onChange={(e) => onUpdateSettings({ ...settings, whatsappNumber: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-white font-mono"
+                  className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-mono"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 mb-1">
+                <label className="block text-slate-700 mb-1">
                   {isUrdu ? 'پنجاب ہیلتھ کیئر کمیشن نمبر' : 'Punjab Healthcare Commission Reg #'}
                 </label>
                 <input
                   type="text"
                   value={settings.phcApprovalNo}
                   onChange={(e) => onUpdateSettings({ ...settings, phcApprovalNo: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-white"
+                  className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-semibold"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-300 mb-1">
+                <label className="block text-slate-700 mb-1">
                   {isUrdu ? 'پتہ (انگلش)' : 'Clinic Address (English)'}
                 </label>
                 <input
                   type="text"
                   value={settings.addressEnglish}
                   onChange={(e) => onUpdateSettings({ ...settings, addressEnglish: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-white"
+                  className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-semibold"
                 />
               </div>
             </div>
 
             <button
               onClick={() => alert(isUrdu ? 'سیٹنگز محفوظ کر لی گئی ہیں۔' : 'Clinic Settings updated successfully!')}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-2.5 rounded-xl shadow mt-2"
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-2.5 rounded-xl shadow mt-2 transition-colors"
             >
               {isUrdu ? 'سیٹنگز محفوظ کریں (Save Settings)' : 'Save Clinic Settings'}
             </button>
+          </div>
+        )}
+
+        {/* Modal: Book Appointment on Behalf of Patient */}
+        {isBookModalOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-slate-900 border border-slate-700 w-full max-w-xl rounded-3xl p-6 text-white space-y-5 shadow-2xl relative">
+              <button
+                type="button"
+                onClick={() => setIsBookModalOpen(false)}
+                className="absolute top-5 right-5 text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
+                <div className="w-10 h-10 bg-amber-400 text-slate-950 rounded-2xl flex items-center justify-center font-bold">
+                  <Plus className="w-6 h-6 text-slate-950" />
+                </div>
+                <div>
+                  <h3 className="font-black text-lg text-amber-400">
+                    {isUrdu ? 'مریض کی طرف سے اپائنٹمنٹ بک کریں' : 'Book Appointment on Behalf of Patient'}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {isUrdu ? 'ایڈمن کنٹرول سسٹم کے ذریعے فوری اپائنٹمنٹ بکنگ و منظوری' : 'Official Hospital Administration Direct Appointment Booking & Approval'}
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={handleAdminBookAppointment} className="space-y-4 text-xs font-semibold">
+                <div>
+                  <label className="block text-slate-300 mb-1">
+                    {isUrdu ? 'معالج منتخب کریں (Select Doctor)' : 'Assigned Specialist Doctor'}
+                  </label>
+                  <select
+                    value={bookDoctorId}
+                    onChange={(e) => setBookDoctorId(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl text-white font-bold"
+                  >
+                    {doctors.map((doc) => (
+                      <option key={doc.id} value={doc.id}>
+                        {isUrdu ? doc.nameUrdu : doc.nameEnglish} ({doc.specialtyUrdu || doc.specialty})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-300 mb-1">
+                      {isUrdu ? 'مریض کا پورا نام' : 'Patient Full Name'} <span className="text-rose-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={bookPatientName}
+                      onChange={(e) => setBookPatientName(e.target.value)}
+                      placeholder={isUrdu ? 'مثال: محمد احمد' : 'e.g. Muhammad Ahmed'}
+                      className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl text-white font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 mb-1">
+                      {isUrdu ? 'موبائل نمبر (WhatsApp/Phone)' : 'Phone Number'} <span className="text-rose-400">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={bookPatientPhone}
+                      onChange={(e) => setBookPatientPhone(e.target.value)}
+                      placeholder="03001234567"
+                      className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl text-white font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-300 mb-1">
+                      {isUrdu ? 'شہر (City)' : 'City'}
+                    </label>
+                    <input
+                      type="text"
+                      value={bookPatientCity}
+                      onChange={(e) => setBookPatientCity(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl text-white font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 mb-1">
+                      {isUrdu ? 'عمر (Age in Years)' : 'Age'}
+                    </label>
+                    <input
+                      type="text"
+                      value={bookPatientAge}
+                      onChange={(e) => setBookPatientAge(e.target.value)}
+                      placeholder="35"
+                      className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl text-white font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-300 mb-1">
+                      {isUrdu ? 'تاریخ (Date)' : 'Appointment Date'}
+                    </label>
+                    <input
+                      type="date"
+                      value={bookDate}
+                      onChange={(e) => setBookDate(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl text-white font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 mb-1">
+                      {isUrdu ? 'وقت (Time Slot)' : 'Time Slot'}
+                    </label>
+                    <select
+                      value={bookTimeSlot}
+                      onChange={(e) => setBookTimeSlot(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl text-white"
+                    >
+                      <option value="صبح 10:00 بجے (Morning Slot)">صبح 10:00 بجے (10:00 AM Morning)</option>
+                      <option value="دوپہر 02:00 بجے (Afternoon Slot)">دوپہر 02:00 بجے (02:00 PM Afternoon)</option>
+                      <option value="شام 06:00 بجے (Evening Slot)">شام 06:00 بجے (06:00 PM Evening)</option>
+                      <option value="رات 08:30 بجے (Night Slot)">رات 08:30 بجے (08:30 PM Night)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 mb-1">
+                    {isUrdu ? 'طبی مسئلہ / مرض (Medical Problem)' : 'Medical Problem / Diagnosis'}
+                  </label>
+                  <input
+                    type="text"
+                    value={bookProblem}
+                    onChange={(e) => setBookProblem(e.target.value)}
+                    placeholder={isUrdu ? 'مثال: جوڑوں کا درد، کمر درد، عام چیک اپ' : 'e.g. Joint Pain, Backache, General OPD'}
+                    className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 mb-1">
+                    {isUrdu ? 'فوری اسٹیٹس (Approval Status)' : 'Initial Status'}
+                  </label>
+                  <div className="flex gap-3">
+                    <label className="flex items-center gap-2 cursor-pointer bg-slate-800 border border-slate-700 p-2.5 rounded-xl flex-1">
+                      <input
+                        type="radio"
+                        name="bookStatus"
+                        value="Approved"
+                        checked={bookStatus === 'Approved'}
+                        onChange={() => setBookStatus('Approved')}
+                        className="text-emerald-500 focus:ring-emerald-500"
+                      />
+                      <span className="text-emerald-400 font-bold">✓ Approved Immediately (منظور شدہ)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer bg-slate-800 border border-slate-700 p-2.5 rounded-xl flex-1">
+                      <input
+                        type="radio"
+                        name="bookStatus"
+                        value="Pending"
+                        checked={bookStatus === 'Pending'}
+                        onChange={() => setBookStatus('Pending')}
+                        className="text-amber-500 focus:ring-amber-500"
+                      />
+                      <span className="text-amber-300 font-bold">⏳ Pending Queue (معلق کیو)</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="pt-3 flex justify-end gap-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsBookModalOpen(false)}
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-4 py-2.5 rounded-xl"
+                  >
+                    {isUrdu ? 'منسوخ کریں' : 'Cancel'}
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingBook}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-2.5 rounded-xl shadow-lg flex items-center gap-2"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    <span>{isSubmittingBook ? 'پروسیسنگ...' : isUrdu ? 'اپائنٹمنٹ بک کریں' : 'Confirm & Book Appointment'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Register Patient Account */}
+        {isRegPatientModalOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-700 w-full max-w-md rounded-3xl p-6 text-white space-y-5 shadow-2xl relative">
+              <button
+                type="button"
+                onClick={() => setIsRegPatientModalOpen(false)}
+                className="absolute top-5 right-5 text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
+                <div className="w-10 h-10 bg-emerald-500 text-slate-950 rounded-2xl flex items-center justify-center font-bold">
+                  <Users className="w-6 h-6 text-slate-950" />
+                </div>
+                <div>
+                  <h3 className="font-black text-lg text-emerald-400">
+                    {isUrdu ? 'نیا مریض اکاؤنٹ رجسٹر کریں' : 'Register New Patient Record'}
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {isUrdu ? 'کلینک ای ایم آر ڈیٹا بیس میں نیا بیمار کا ریکارڈ شامل کریں' : 'Add official patient user profile into hospital DB'}
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={handleRegisterPatient} className="space-y-4 text-xs font-semibold">
+                <div>
+                  <label className="block text-slate-300 mb-1">
+                    {isUrdu ? 'مریض کا اسم گرامی (Full Name)' : 'Patient Name'} <span className="text-rose-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={regPatientName}
+                    onChange={(e) => setRegPatientName(e.target.value)}
+                    placeholder={isUrdu ? 'مثال: علی حسن' : 'Ali Hassan'}
+                    className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl text-white font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 mb-1">
+                    {isUrdu ? 'یوزر نیم (Username / Patient ID)' : 'Username'}
+                  </label>
+                  <input
+                    type="text"
+                    value={regPatientUsername}
+                    onChange={(e) => setRegPatientUsername(e.target.value)}
+                    placeholder="patient123"
+                    className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 mb-1">
+                    {isUrdu ? 'فون نمبر (Phone Number)' : 'Phone'}
+                  </label>
+                  <input
+                    type="text"
+                    value={regPatientPhone}
+                    onChange={(e) => setRegPatientPhone(e.target.value)}
+                    placeholder="03001234567"
+                    className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl text-white font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 mb-1">
+                    {isUrdu ? 'شہر (City)' : 'City'}
+                  </label>
+                  <input
+                    type="text"
+                    value={regPatientCity}
+                    onChange={(e) => setRegPatientCity(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl text-white font-bold"
+                  />
+                </div>
+
+                <div className="pt-3 flex justify-end gap-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsRegPatientModalOpen(false)}
+                    className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-4 py-2.5 rounded-xl"
+                  >
+                    {isUrdu ? 'منسوخ' : 'Cancel'}
+                  </button>
+                  <button
+                    type="submit"
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-2.5 rounded-xl shadow-lg flex items-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>{isUrdu ? 'اکاؤنٹ بنائیں' : 'Create Patient Record'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
       </div>

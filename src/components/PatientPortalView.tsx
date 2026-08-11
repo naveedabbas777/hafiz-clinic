@@ -427,11 +427,7 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({
 
             {/* TAB CONTENT: 1. CHAT WITH DOCTOR */}
             {portalTab === 'chat' && (
-              <div className="space-y-4">
-                <div className="bg-emerald-900 text-white p-4 rounded-2xl flex items-center justify-between text-xs font-bold">
-                  <span>{isUrdu ? '💬 ڈاکٹر سے براہ راست مشورہ و سوالات' : '💬 Direct Doctor Consultation & Chat'}</span>
-                  <span className="bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full text-[10px]">Direct Doctor Consultation</span>
-                </div>
+              <div className="space-y-2">
                 <DoctorPatientChatView currentUser={currentUser} doctors={doctors} language={language} />
               </div>
             )}

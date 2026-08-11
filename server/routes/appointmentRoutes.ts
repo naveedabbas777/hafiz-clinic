@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import mongoose from 'mongoose';
 import { Appointment } from '../models/Appointment';
 import { User } from '../models/User';
 import { getMongoConnectedStatus } from '../config/db';
@@ -116,23 +117,30 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    let updatedAppt: any = null;
+
     if (getMongoConnectedStatus()) {
-      const updated = await Appointment.findOneAndUpdate(
-        { $or: [{ _id: id }, { id: id }] },
-        req.body,
+      const isObjId = mongoose.Types.ObjectId.isValid(id);
+      const query = isObjId ? { $or: [{ _id: id }, { id: id }] } : { id: id };
+      updatedAppt = await Appointment.findOneAndUpdate(
+        query,
+        { $set: req.body },
         { new: true }
       );
-      if (updated) {
-        return res.json({ success: true, appointment: updated });
-      }
     }
 
-    const index = inMemoryAppointments.findIndex((a) => a.id === id);
+    const index = inMemoryAppointments.findIndex((a) => a.id === id || (a._id && String(a._id) === id));
     if (index !== -1) {
       inMemoryAppointments[index] = { ...inMemoryAppointments[index], ...req.body };
+      if (!updatedAppt) updatedAppt = inMemoryAppointments[index];
+    } else {
+      inMemoryAppointments.unshift({ id, ...req.body });
+      if (!updatedAppt) updatedAppt = { id, ...req.body };
     }
-    return res.json({ success: true, appointment: inMemoryAppointments[index] || { id, ...req.body } });
+
+    return res.json({ success: true, appointment: updatedAppt });
   } catch (err: any) {
+    console.error('Error updating appointment:', err);
     return res.status(500).json({ success: false, message: err.message });
   }
 });

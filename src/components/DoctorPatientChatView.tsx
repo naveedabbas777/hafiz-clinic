@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Paperclip, FileText, User, Search, Phone, Video, Mic, X, ExternalLink, ShieldCheck, FileCheck, Lock, ArrowLeft, Play, Pause, Trash2, Download, CheckCheck, MicOff, VideoOff, PhoneOff, Volume2, VolumeX } from 'lucide-react';
+import { Send, Paperclip, FileText, User, Search, Phone, Video, Mic, X, ExternalLink, ShieldCheck, FileCheck, Lock, ArrowLeft, Play, Pause, Trash2, Download, CheckCheck, MicOff, VideoOff, PhoneOff, Volume2, VolumeX, Smartphone, ChevronDown } from 'lucide-react';
 import { Doctor } from '../types';
-import { getMessagesApi, sendMessageApi, createReportApi, uploadDiseaseImageApi, getUsersApi } from '../services/api';
+import { getMessagesApi, sendMessageApi, createReportApi, uploadDiseaseImageApi, getUsersApi, getActiveCallApi, startCallApi, acceptCallApi, declineCallApi, endCallApi, sendCallSignalApi, getCallSignalsApi } from '../services/api';
 
-// WAV Audio Blob Generator for cross-browser fallback voice notes
-function createAudioToneBlobUrl(durationSeconds: number = 4): string {
+// WAV Base64 Audio Generator for permanent cross-browser voice notes
+function createAudioToneDataUrl(durationSeconds: number = 4): string {
   try {
     const sampleRate = 22050;
     const dur = Math.max(1, Math.min(30, durationSeconds));
@@ -38,8 +38,14 @@ function createAudioToneBlobUrl(durationSeconds: number = 4): string {
       view.setInt16(44 + i * 2, intSample, true);
     }
 
-    const blob = new Blob([buffer], { type: 'audio/wav' });
-    return URL.createObjectURL(blob);
+    let binary = '';
+    const bytes = new Uint8Array(buffer.buffer);
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64 = btoa(binary);
+    return `data:audio/wav;base64,${base64}`;
   } catch (e) {
     return '';
   }
@@ -145,11 +151,11 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
 }) => {
   const isUrdu = language === 'urdu';
   const isDoctor = currentUser?.role === 'doctor';
-  const userId = currentUser?.id || currentUser?._id || (isDoctor ? 'doc-1' : 'patient-demo-1');
+  const userId = currentUser?.id || currentUser?._id || (isDoctor ? 'doc-1' : 'usr-1');
   const userName = currentUser?.fullName || currentUser?.name || (isDoctor ? 'ڈاکٹر زیشان چوہدری' : 'محمد فاروق');
 
-  // Mobile View Navigation State
-  const [showMobileChat, setShowMobileChat] = useState(false);
+  // Mobile View Navigation State (Auto-open chat stream on mobile for Patients)
+  const [showMobileChat, setShowMobileChat] = useState(!isDoctor);
 
   // Build Doctor Contacts from `doctors` prop
   const doctorContactsList: ContactItem[] = (doctors && doctors.length > 0
@@ -291,17 +297,16 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
   const [rxAdvice, setRxAdvice] = useState('پرہیز: تلی ہوئی اشیاء، ڈرنکس اور بادی اشیاء سے پرہیز کریں۔');
 
   // Audio Voice Recorder & Playback State
+  const [myOnlineStatus, setMyOnlineStatus] = useState<boolean>(true);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerIntervalRef = useRef<any>(null);
 
-  // User Online / Offline Status State
-  const [myOnlineStatus, setMyOnlineStatus] = useState<boolean>(true);
-
   // Live Telemedicine Call State (WhatsApp Style)
   const [activeCall, setActiveCall] = useState<{
+    id?: string;
     type: 'audio' | 'video';
     contact: ContactItem;
     status: 'ringing' | 'connected' | 'ended';
@@ -311,11 +316,198 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isSpeakerMuted, setIsSpeakerMuted] = useState(false);
+  const [speakerMode, setSpeakerMode] = useState<'loudspeaker' | 'earpiece'>('loudspeaker');
+  const [remoteStreamState, setRemoteStreamState] = useState<MediaStream | null>(null);
+  const [isSwappedVideo, setIsSwappedVideo] = useState(false);
 
   const ringtoneRef = useRef<RingtoneSynthesizer | null>(null);
   const callTimerRef = useRef<any>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const videoElementRef = useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const callAudioContextRef = useRef<AudioContext | null>(null);
+  const audioGainNodeRef = useRef<GainNode | null>(null);
+  const audioSourceNodeRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const processedSignalsRef = useRef<Set<string>>(new Set());
+  const signalPollTimerRef = useRef<any>(null);
+
+  // Handle camera video toggle (On/Off)
+  useEffect(() => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getVideoTracks().forEach((track) => {
+        track.enabled = !isVideoOff;
+      });
+    }
+  }, [isVideoOff]);
+
+  // Handle Mute & Speaker Mode (Loudspeaker vs Earpiece) toggles in real-time
+  useEffect(() => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getAudioTracks().forEach((track) => {
+        track.enabled = !isMuted;
+      });
+    }
+  }, [isMuted]);
+
+  useEffect(() => {
+    const vol = isSpeakerMuted ? 0 : (speakerMode === 'loudspeaker' ? 1.0 : 0.28);
+    if (audioGainNodeRef.current) {
+      audioGainNodeRef.current.gain.value = vol;
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.muted = isSpeakerMuted;
+      remoteAudioRef.current.volume = vol;
+    }
+  }, [isSpeakerMuted, speakerMode]);
+
+  // Ensure local and remote video elements stay updated with active MediaStreams
+  useEffect(() => {
+    if (activeCall?.type === 'video' && activeCall?.status === 'connected') {
+      if (localVideoRef.current && localStreamRef.current) {
+        localVideoRef.current.srcObject = localStreamRef.current;
+        localVideoRef.current.play().catch(() => {});
+      }
+      if (remoteVideoRef.current && remoteStreamState) {
+        remoteVideoRef.current.srcObject = remoteStreamState;
+        remoteVideoRef.current.play().catch(() => {});
+      }
+    }
+  }, [activeCall?.status, activeCall?.type, isSwappedVideo, remoteStreamState]);
+
+  // Real-time WebRTC Live Microphone Audio & Video Stream Connection
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (activeCall?.status === 'connected' && activeCall?.id) {
+      const callId = activeCall.id;
+      processedSignalsRef.current.clear();
+
+      const initCallMediaAndWebRTC = async () => {
+        try {
+          // 1. Get user's local microphone/camera stream to transmit to the other user
+          let localStream = localStreamRef.current;
+          if (!localStream && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            localStream = await navigator.mediaDevices.getUserMedia({
+              audio: true,
+              video: activeCall.type === 'video',
+            });
+            localStreamRef.current = localStream;
+          }
+
+          if (localVideoRef.current && activeCall.type === 'video' && localStream) {
+            localVideoRef.current.srcObject = localStream;
+            localVideoRef.current.play().catch(() => {});
+          }
+
+          // 2. Initialize RTCPeerConnection for live real-time audio/video exchange
+          const configuration = {
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:stun1.l.google.com:19302' },
+            ],
+          };
+
+          if (peerConnectionRef.current) {
+            try { peerConnectionRef.current.close(); } catch (e) {}
+          }
+
+          const pc = new RTCPeerConnection(configuration);
+          peerConnectionRef.current = pc;
+
+          // 3. Add local audio and video tracks so remote participant receives our stream live
+          if (localStream) {
+            localStream.getTracks().forEach((track) => {
+              pc.addTrack(track, localStream!);
+            });
+          }
+
+          // 4. Handle incoming remote audio and video stream from the patient / doctor
+          pc.ontrack = (event) => {
+            if (event.streams && event.streams[0]) {
+              const remoteStream = event.streams[0];
+              setRemoteStreamState(remoteStream);
+
+              if (remoteVideoRef.current) {
+                remoteVideoRef.current.srcObject = remoteStream;
+                remoteVideoRef.current.play().catch(() => {});
+              }
+              if (remoteAudioRef.current) {
+                remoteAudioRef.current.srcObject = remoteStream;
+                remoteAudioRef.current.play().catch(() => {});
+              }
+              setupLiveCallAudio(remoteStream);
+            }
+          };
+
+          // 5. Send ICE candidates to server signaling relay
+          pc.onicecandidate = (event) => {
+            if (event.candidate) {
+              sendCallSignalApi(callId, userId, { candidate: event.candidate }).catch(() => {});
+            }
+          };
+
+          // 6. If caller (outgoing call mode), create and send SDP Offer
+          if (activeCall.mode === 'outgoing') {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            await sendCallSignalApi(callId, userId, { sdp: offer }).catch(() => {});
+          }
+
+          // 7. Poll server for remote peer WebRTC signals every second
+          if (signalPollTimerRef.current) clearInterval(signalPollTimerRef.current);
+          signalPollTimerRef.current = setInterval(async () => {
+            if (isCancelled || !peerConnectionRef.current) return;
+            try {
+              const res = await getCallSignalsApi(callId, userId);
+              if (res && res.success && res.signals && res.signals.length > 0) {
+                for (const sig of res.signals) {
+                  const sigStr = JSON.stringify(sig);
+                  if (processedSignalsRef.current.has(sigStr)) continue;
+                  processedSignalsRef.current.add(sigStr);
+
+                  if (sig.sdp) {
+                    if (sig.sdp.type === 'offer' && pc.signalingState !== 'closed') {
+                      await pc.setRemoteDescription(new RTCSessionDescription(sig.sdp));
+                      const answer = await pc.createAnswer();
+                      await pc.setLocalDescription(answer);
+                      await sendCallSignalApi(callId, userId, { sdp: answer }).catch(() => {});
+                    } else if (sig.sdp.type === 'answer' && pc.signalingState !== 'closed') {
+                      await pc.setRemoteDescription(new RTCSessionDescription(sig.sdp));
+                    }
+                  } else if (sig.candidate) {
+                    await pc.addIceCandidate(new RTCIceCandidate(sig.candidate)).catch(() => {});
+                  }
+                }
+              }
+            } catch (err) {
+              // Ignore polling signaling errors
+            }
+          }, 1000);
+
+        } catch (e) {
+          console.log('WebRTC P2P Live Call setup:', e);
+        }
+      };
+
+      initCallMediaAndWebRTC();
+    } else {
+      if (signalPollTimerRef.current) {
+        clearInterval(signalPollTimerRef.current);
+        signalPollTimerRef.current = null;
+      }
+    }
+
+    return () => {
+      isCancelled = true;
+      if (signalPollTimerRef.current) {
+        clearInterval(signalPollTimerRef.current);
+        signalPollTimerRef.current = null;
+      }
+    };
+  }, [activeCall?.status, activeCall?.id]);
 
   // Currently Playing Voice Note State
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
@@ -327,27 +519,51 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
 
   const isUserNearBottomRef = useRef<boolean>(true);
   const [showJumpBottom, setShowJumpBottom] = useState(false);
+  const [unreadNewCount, setUnreadNewCount] = useState<number>(0);
+  const lastMessageIdRef = useRef<string | null>(null);
 
   const handleChatScroll = () => {
     if (chatContainerRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = chatContainerRef.current;
-      const isNear = scrollHeight - scrollTop - clientHeight < 120;
+      const distanceToBottom = scrollHeight - scrollTop - clientHeight;
+      const isNear = distanceToBottom < 120;
       isUserNearBottomRef.current = isNear;
-      setShowJumpBottom(!isNear);
+      if (isNear) {
+        setShowJumpBottom(false);
+        setUnreadNewCount(0);
+      } else {
+        setShowJumpBottom(true);
+      }
     }
   };
 
-  // Helper to scroll to bottom focus without yanking if user scrolled up
-  const scrollToLatestMessage = (force = false) => {
-    setTimeout(() => {
+  // Helper to scroll to bottom focus (WhatsApp style)
+  const scrollToLatestMessage = (force = false, smooth = true) => {
+    const doScroll = () => {
       if (chatContainerRef.current) {
         if (force || isUserNearBottomRef.current) {
-          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+          const target = chatContainerRef.current.scrollHeight;
+          if (smooth) {
+            chatContainerRef.current.scrollTo({ top: target, behavior: 'smooth' });
+          } else {
+            chatContainerRef.current.scrollTop = target;
+          }
           isUserNearBottomRef.current = true;
           setShowJumpBottom(false);
+          setUnreadNewCount(0);
         }
       }
-    }, 80);
+      if (chatEndRef.current && (force || isUserNearBottomRef.current)) {
+        try {
+          chatEndRef.current.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'end' });
+        } catch (e) {}
+      }
+    };
+
+    doScroll();
+    requestAnimationFrame(doScroll);
+    setTimeout(doScroll, 50);
+    setTimeout(doScroll, 180);
   };
 
   const handleDownloadAttachment = (url: string, defaultFilename = 'hafiz_clinic_document.pdf') => {
@@ -381,47 +597,155 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
     }
   };
 
+  // Poll server for active incoming or connected calls in realtime
+  const pollActiveCall = async () => {
+    try {
+      const res = await getActiveCallApi(userId);
+      if (res && res.success) {
+        const serverCall = res.call;
+        if (serverCall) {
+          if (serverCall.receiverId === userId && serverCall.status === 'ringing') {
+            if (!activeCall || activeCall.id !== serverCall.id) {
+              const callerContact: ContactItem = {
+                id: serverCall.callerId,
+                nameUrdu: serverCall.callerName,
+                nameEnglish: serverCall.callerName,
+                role: serverCall.callerRole,
+                image: serverCall.callerRole === 'doctor'
+                  ? 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=600'
+                  : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=600',
+              };
+
+              if (ringtoneRef.current) ringtoneRef.current.stop();
+              ringtoneRef.current = new RingtoneSynthesizer();
+              ringtoneRef.current.start();
+
+              setActiveCall({
+                id: serverCall.id,
+                type: serverCall.type,
+                contact: callerContact,
+                status: 'ringing',
+                mode: 'incoming',
+              });
+              setCallSeconds(0);
+            }
+          } else if (serverCall.status === 'connected') {
+            if (activeCall && activeCall.status === 'ringing') {
+              if (ringtoneRef.current) {
+                ringtoneRef.current.stop();
+                ringtoneRef.current = null;
+              }
+              setActiveCall((prev) => (prev ? { ...prev, status: 'connected' } : null));
+              if (!callTimerRef.current) {
+                callTimerRef.current = setInterval(() => {
+                  setCallSeconds((s) => s + 1);
+                }, 1000);
+              }
+            }
+          }
+        } else if (activeCall) {
+          if (ringtoneRef.current) {
+            ringtoneRef.current.stop();
+            ringtoneRef.current = null;
+          }
+          if (callTimerRef.current) {
+            clearInterval(callTimerRef.current);
+            callTimerRef.current = null;
+          }
+          if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach((t) => t.stop());
+            localStreamRef.current = null;
+          }
+          setActiveCall(null);
+          setCallSeconds(0);
+        }
+      }
+    } catch (e) {
+      // Ignore polling errors
+    }
+  };
+
   // Load messages and registered patients whenever active contact changes or component mounts
   useEffect(() => {
+    isUserNearBottomRef.current = true;
+    lastMessageIdRef.current = null;
+    setUnreadNewCount(0);
     fetchRegisteredPatients();
     fetchMessages();
-    scrollToLatestMessage(true);
+    pollActiveCall();
+    scrollToLatestMessage(true, false);
 
     const timer = setInterval(() => {
       fetchRegisteredPatients();
       fetchMessages();
-    }, 3000);
+      pollActiveCall();
+    }, 1500);
 
     return () => clearInterval(timer);
-  }, [activeContact.id, userId]);
-
-  useEffect(() => {
-    scrollToLatestMessage(false);
-  }, [messages.length]);
+  }, [activeContact.id, userId, activeCall?.id, activeCall?.status]);
 
   const fetchMessages = async () => {
     try {
       const res = await getMessagesApi(userId, activeContact.id);
-      if (res.success && res.messages && res.messages.length > 0) {
-        setMessages(res.messages);
-      } else {
-        setMessages([
-          {
-            id: `init_${activeContact.id}`,
-            senderId: activeContact.id,
-            senderName: activeContact.nameUrdu,
-            senderRole: activeContact.role,
-            receiverId: userId,
-            receiverName: userName,
-            receiverRole: isDoctor ? 'doctor' : 'patient',
-            text: isUrdu
-              ? `السلام علیکم! حافظ کلینک ٹیلی میڈیسن پورٹل میں خوش آمدید۔ میں ${activeContact.nameUrdu} ہوں، آپ اپنی بیماری کی تفصیلات اور رپورٹس یہاں شیئر کر سکتے ہیں۔`
-              : `Welcome! I am ${activeContact.nameEnglish}. Please feel free to share your health details or test reports here.`,
-            createdAt: new Date(Date.now() - 1800000).toISOString(),
-          },
-        ]);
+      if (res.success && Array.isArray(res.messages)) {
+        if (res.messages.length > 0) {
+          const serverMsgs = res.messages;
+          const latestMsg = serverMsgs[serverMsgs.length - 1];
+          const latestId = latestMsg?.id || latestMsg?.createdAt || '';
+
+          const isBrandNewMessage = lastMessageIdRef.current !== null && lastMessageIdRef.current !== latestId;
+          lastMessageIdRef.current = latestId;
+
+          setMessages((prev) => {
+            const serverMap = new Map(serverMsgs.map((m: MessageItem) => [m.id || m.createdAt, m]));
+            // Retain any pending/optimistic local messages that aren't on server yet
+            const pendingLocal = prev.filter((local) => {
+              if (!local.id || local.id.startsWith('init_')) return false;
+              if (serverMap.has(local.id)) return false;
+              // Filter out if server already has an identical message
+              const existsInServer = serverMsgs.some(
+                (s: MessageItem) =>
+                  s.senderId === local.senderId &&
+                  s.receiverId === local.receiverId &&
+                  s.text === local.text &&
+                  s.attachmentUrl === local.attachmentUrl &&
+                  s.audioUrl === local.audioUrl
+              );
+              return !existsInServer;
+            });
+            return [...serverMsgs, ...pendingLocal];
+          });
+
+          if (isBrandNewMessage) {
+            if (isUserNearBottomRef.current) {
+              scrollToLatestMessage(true, true);
+            } else {
+              setShowJumpBottom(true);
+              setUnreadNewCount((prev) => prev + 1);
+            }
+          }
+        } else {
+          setMessages((prev) => {
+            const hasUserMsgs = prev.some((m) => m.id && !m.id.startsWith('init_'));
+            if (hasUserMsgs) return prev;
+            return [
+              {
+                id: `init_${activeContact.id}`,
+                senderId: activeContact.id,
+                senderName: activeContact.nameUrdu,
+                senderRole: activeContact.role,
+                receiverId: userId,
+                receiverName: userName,
+                receiverRole: isDoctor ? 'doctor' : 'patient',
+                text: isUrdu
+                  ? `السلام علیکم! حافظ کلینک ٹیلی میڈیسن پورٹل میں خوش آمدید۔ میں ${activeContact.nameUrdu} ہوں، آپ اپنی بیماری کی تفصیلات اور رپورٹس یہاں شیئر کر سکتے ہیں۔`
+                  : `Welcome! I am ${activeContact.nameEnglish}. Please feel free to share your health details or test reports here.`,
+                createdAt: new Date(Date.now() - 1800000).toISOString(),
+              },
+            ];
+          });
+        }
       }
-      scrollToLatestMessage();
     } catch (e) {
       // Keep state
     }
@@ -451,8 +775,8 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
 
     setPlayingAudioId(msgId);
 
-    // If real Blob or HTTP audio URL exists, attempt HTML5 Audio play first
-    if (audioUrl && (audioUrl.startsWith('blob:') || audioUrl.startsWith('http'))) {
+    // If real Blob, Data URL or HTTP audio URL exists, attempt HTML5 Audio play first
+    if (audioUrl && (audioUrl.startsWith('blob:') || audioUrl.startsWith('http') || audioUrl.startsWith('data:'))) {
       try {
         const audio = new Audio(audioUrl);
         activeAudioObjectRef.current = audio;
@@ -543,6 +867,67 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
     }
   };
 
+  // Setup Live Audio Routing (Microphone to Speaker & Web Audio)
+  const setupLiveCallAudio = (stream: MediaStream) => {
+    try {
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = stream;
+        remoteAudioRef.current.play().catch(() => {});
+      }
+
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        if (callAudioContextRef.current && callAudioContextRef.current.state !== 'closed') {
+          try {
+            callAudioContextRef.current.close();
+          } catch (e) {}
+        }
+        const ctx = new AudioCtx();
+        callAudioContextRef.current = ctx;
+
+        const source = ctx.createMediaStreamSource(stream);
+        audioSourceNodeRef.current = source;
+
+        const gainNode = ctx.createGain();
+        const vol = isSpeakerMuted ? 0 : (speakerMode === 'loudspeaker' ? 1.0 : 0.28);
+        gainNode.gain.value = vol;
+        audioGainNodeRef.current = gainNode;
+
+        source.connect(gainNode);
+        gainNode.connect(ctx.destination);
+      }
+    } catch (err) {
+      console.log('Live Audio setup:', err);
+    }
+  };
+
+  const cleanupCallAudioAndMedia = () => {
+    if (callAudioContextRef.current) {
+      try {
+        callAudioContextRef.current.close();
+      } catch (e) {}
+      callAudioContextRef.current = null;
+    }
+    audioSourceNodeRef.current = null;
+    audioGainNodeRef.current = null;
+
+    if (peerConnectionRef.current) {
+      try {
+        peerConnectionRef.current.close();
+      } catch (e) {}
+      peerConnectionRef.current = null;
+    }
+
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      localStreamRef.current = null;
+    }
+
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = null;
+    }
+  };
+
   // Start Telemedicine Audio or Video Call (WhatsApp Ringing)
   const startCall = async (type: 'audio' | 'video', mode: 'outgoing' | 'incoming' = 'outgoing') => {
     if (ringtoneRef.current) {
@@ -551,16 +936,36 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
     ringtoneRef.current = new RingtoneSynthesizer();
     ringtoneRef.current.start();
 
+    setCallSeconds(0);
+    setIsMuted(false);
+    setIsVideoOff(false);
+    setIsSpeakerMuted(false);
+
+    let callId = `call_${Date.now()}`;
+    try {
+      const res = await startCallApi({
+        callerId: userId,
+        callerName: userName,
+        callerRole: isDoctor ? 'doctor' : 'patient',
+        receiverId: activeContact.id,
+        receiverName: isUrdu ? activeContact.nameUrdu : (activeContact.nameEnglish || activeContact.nameUrdu),
+        receiverRole: activeContact.role,
+        type,
+      });
+      if (res && res.call && res.call.id) {
+        callId = res.call.id;
+      }
+    } catch (e) {
+      // Fallback local call
+    }
+
     setActiveCall({
+      id: callId,
       type,
       contact: activeContact,
       status: 'ringing',
       mode,
     });
-    setCallSeconds(0);
-    setIsMuted(false);
-    setIsVideoOff(false);
-    setIsSpeakerMuted(false);
 
     try {
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -569,8 +974,10 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
           video: type === 'video',
         });
         localStreamRef.current = stream;
-        if (videoElementRef.current && type === 'video') {
-          videoElementRef.current.srcObject = stream;
+        // Do NOT play local stream back to self (prevents local voice echo)
+        if (localVideoRef.current && type === 'video') {
+          localVideoRef.current.srcObject = stream;
+          localVideoRef.current.play().catch(() => {});
         }
       }
     } catch (err) {
@@ -578,10 +985,14 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
     }
   };
 
-  const acceptCall = () => {
+  const acceptCall = async () => {
     if (ringtoneRef.current) {
       ringtoneRef.current.stop();
       ringtoneRef.current = null;
+    }
+
+    if (activeCall?.id) {
+      await acceptCallApi(activeCall.id).catch(() => {});
     }
 
     setActiveCall((prev) => (prev ? { ...prev, status: 'connected' } : null));
@@ -590,20 +1001,38 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
     callTimerRef.current = setInterval(() => {
       setCallSeconds((s) => s + 1);
     }, 1000);
+
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: activeCall?.type === 'video',
+        });
+        localStreamRef.current = stream;
+        // Do NOT play local stream back to self (prevents local voice echo)
+        if (localVideoRef.current && activeCall?.type === 'video') {
+          localVideoRef.current.srcObject = stream;
+          localVideoRef.current.play().catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.log('Telemedicine call accepted');
+    }
   };
 
-  const declineCall = () => {
+  const declineCall = async () => {
     if (ringtoneRef.current) {
       ringtoneRef.current.stop();
       ringtoneRef.current = null;
     }
     if (callTimerRef.current) clearInterval(callTimerRef.current);
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
-      localStreamRef.current = null;
-    }
+    cleanupCallAudioAndMedia();
 
     if (activeCall) {
+      if (activeCall.id) {
+        await declineCallApi(activeCall.id).catch(() => {});
+      }
+
       const declMsg: MessageItem = {
         id: `call_decl_${Date.now()}`,
         senderId: userId,
@@ -626,22 +1055,23 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
     setCallSeconds(0);
   };
 
-  const endCall = () => {
+  const endCall = async () => {
     if (ringtoneRef.current) {
       ringtoneRef.current.stop();
       ringtoneRef.current = null;
     }
     if (callTimerRef.current) clearInterval(callTimerRef.current);
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
-      localStreamRef.current = null;
-    }
+    cleanupCallAudioAndMedia();
 
     const durationMin = Math.floor(callSeconds / 60);
     const durationSec = callSeconds % 60;
     const formattedDuration = `${durationMin < 10 ? '0' + durationMin : durationMin}:${durationSec < 10 ? '0' + durationSec : durationSec}`;
 
     if (activeCall) {
+      if (activeCall.id) {
+        await endCallApi(activeCall.id).catch(() => {});
+      }
+
       const callLogMsg: MessageItem = {
         id: `call_${Date.now()}`,
         senderId: userId,
@@ -664,7 +1094,7 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
     setCallSeconds(0);
   };
 
-  // Stop & Send Voice Recording
+  // Stop & Send Voice Recording with Base64 Data URL so it NEVER disappears
   const stopAndSendVoiceRecording = () => {
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
 
@@ -673,27 +1103,33 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.onstop = () => {
-        let voiceAudioUrl = '';
         if (audioChunksRef.current.length > 0) {
           const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
           if (blob.size > 0) {
-            voiceAudioUrl = URL.createObjectURL(blob);
+            const reader = new FileReader();
+            reader.onloadend = () => {
+              const base64Audio = reader.result as string;
+              sendVoiceMessage(base64Audio, durFormatted);
+            };
+            reader.readAsDataURL(blob);
+            setIsRecording(false);
+            setRecordingSeconds(0);
+            return;
           }
         }
-        if (!voiceAudioUrl) {
-          voiceAudioUrl = createAudioToneBlobUrl(durSec);
-        }
-        sendVoiceMessage(voiceAudioUrl, durFormatted);
+        const fallbackUrl = createAudioToneDataUrl(durSec);
+        sendVoiceMessage(fallbackUrl, durFormatted);
+        setIsRecording(false);
+        setRecordingSeconds(0);
       };
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream?.getTracks().forEach((track) => track.stop());
     } else {
-      const voiceAudioUrl = createAudioToneBlobUrl(durSec);
-      sendVoiceMessage(voiceAudioUrl, durFormatted);
+      const fallbackUrl = createAudioToneDataUrl(durSec);
+      sendVoiceMessage(fallbackUrl, durFormatted);
+      setIsRecording(false);
+      setRecordingSeconds(0);
     }
-
-    setIsRecording(false);
-    setRecordingSeconds(0);
   };
 
   // Cancel Voice Recording
@@ -708,7 +1144,7 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
   };
 
   const sendVoiceMessage = (url: string, durationStr: string) => {
-    const finalUrl = url || createAudioToneBlobUrl(5);
+    const finalUrl = url || createAudioToneDataUrl(5);
     const newMsg: MessageItem = {
       id: `v_${Date.now()}`,
       senderId: userId,
@@ -724,33 +1160,8 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
     };
 
     setMessages((prev) => [...prev, newMsg]);
-    sendMessageApi(newMsg).catch(() => {});
+    sendMessageApi(newMsg).then(() => fetchMessages()).catch(() => {});
     scrollToLatestMessage(true);
-
-    // Auto Reply from Doctor if sent by Patient
-    if (!isDoctor) {
-      setTimeout(() => {
-        const replyUrl = createAudioToneBlobUrl(6);
-        const docVoiceReply: MessageItem = {
-          id: `v_doc_${Date.now()}`,
-          senderId: activeContact.id,
-          senderName: isUrdu ? activeContact.nameUrdu : (activeContact.nameEnglish || activeContact.nameUrdu),
-          senderRole: 'doctor',
-          receiverId: userId,
-          receiverName: userName,
-          receiverRole: 'patient',
-          text: isUrdu
-            ? `🎙️ معالج ${activeContact.nameUrdu} کا جواب: وائس پیغام موصول ہوا، مریض کی علامات دیکھ لی گئی ہیں۔`
-            : `🎙️ Voice reply from ${activeContact.nameEnglish || activeContact.nameUrdu}: Audio message received and symptoms noted.`,
-          audioUrl: replyUrl,
-          audioDuration: '00:06',
-          createdAt: new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, docVoiceReply]);
-        sendMessageApi(docVoiceReply).catch(() => {});
-        scrollToLatestMessage(true);
-      }, 1800);
-    }
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
@@ -776,30 +1187,8 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
     setAttachmentUrl('');
     scrollToLatestMessage(true);
 
-    // Save message via API
-    sendMessageApi(newMsg).catch(() => {});
-
-    // Auto Response Simulation if Patient is sending message
-    if (!isDoctor) {
-      setTimeout(() => {
-        const docReply: MessageItem = {
-          id: `m_reply_${Date.now()}`,
-          senderId: activeContact.id,
-          senderName: isUrdu ? activeContact.nameUrdu : (activeContact.nameEnglish || activeContact.nameUrdu),
-          senderRole: 'doctor',
-          receiverId: userId,
-          receiverName: userName,
-          receiverRole: 'patient',
-          text: isUrdu
-            ? `جزاک اللہ! آپ کا پیغام ${activeContact.nameUrdu} کو موصول ہو گیا ہے۔ معائنہ کر کے جلد نسخہ و جواب دیا جائے گا۔`
-            : `Thank you! Your message has been received by ${activeContact.nameEnglish || activeContact.nameUrdu}. The doctor will review and reply shortly.`,
-          createdAt: new Date().toISOString(),
-        };
-        setMessages((prev) => [...prev, docReply]);
-        sendMessageApi(docReply).catch(() => {});
-        scrollToLatestMessage(true);
-      }, 1500);
-    }
+    // Save message via API and trigger immediate refresh
+    sendMessageApi(newMsg).then(() => fetchMessages()).catch(() => {});
   };
 
   const handleSendPrescriptionDirect = () => {
@@ -863,7 +1252,7 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
   });
 
   return (
-    <div className="bg-white rounded-3xl overflow-hidden border border-slate-200 shadow-xl flex flex-col md:flex-row h-[680px] sm:h-[720px] w-full max-w-7xl mx-auto text-slate-900 font-sans">
+    <div className="bg-white rounded-xl sm:rounded-3xl overflow-hidden border border-slate-200 shadow-xl flex flex-col md:flex-row h-[520px] sm:h-[620px] md:h-[calc(100vh-150px)] max-h-[820px] min-h-[460px] w-full max-w-7xl mx-auto text-slate-900 font-sans">
       
       {/* ============================================== */}
       {/* LEFT SIDEBAR (CONTACTS LIST) */}
@@ -936,7 +1325,8 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
                 onClick={() => {
                   setActiveContact(contact);
                   setShowMobileChat(true);
-                  scrollToLatestMessage();
+                  isUserNearBottomRef.current = true;
+                  scrollToLatestMessage(true, false);
                 }}
                 className={`p-3 sm:p-3.5 flex items-center gap-3 cursor-pointer transition-colors ${
                   isSelected ? 'bg-emerald-50 border-r-4 border-emerald-600' : 'hover:bg-slate-50'
@@ -1078,16 +1468,7 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
         </div>
 
         {/* Messages Stream */}
-        <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4 text-xs bg-slate-100/90 relative">
-          {showJumpBottom && (
-            <button
-              type="button"
-              onClick={() => scrollToLatestMessage(true)}
-              className="sticky top-2 float-right z-20 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-3.5 py-1.5 rounded-full shadow-lg border border-emerald-500 flex items-center gap-1.5 transition-all animate-bounce"
-            >
-              <span>↓ {isUrdu ? 'نئے پیغامات / نیچے جائیں' : 'Scroll to Latest'}</span>
-            </button>
-          )}
+        <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto p-2.5 sm:p-5 space-y-3 sm:space-y-4 text-xs bg-slate-100/90 relative">
           {messages.map((msg, idx) => {
             const isMe = msg.senderRole === (isDoctor ? 'doctor' : 'patient');
             const msgUniqueKey = msg.id || `msg_${idx}`;
@@ -1110,25 +1491,28 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
 
                 {/* Bubble Frame */}
                 <div
-                  className={`max-w-[90%] sm:max-w-[78%] p-3 sm:p-3.5 rounded-2xl shadow-sm space-y-2 relative ${
+                  className={`max-w-[88%] sm:max-w-[78%] p-3 sm:p-3.5 rounded-2xl shadow-xs space-y-2 relative ${
                     isMe
                       ? 'bg-emerald-700 text-white rounded-tr-none'
                       : 'bg-white text-slate-900 border border-slate-200 rounded-tl-none shadow-xs'
                   }`}
                 >
                   {/* Text Content */}
-                  <p className="whitespace-pre-wrap leading-relaxed text-xs font-medium break-words">{msg.text}</p>
+                  {msg.text && (
+                    <p className="whitespace-pre-wrap leading-relaxed text-xs sm:text-xs font-medium break-words">{msg.text}</p>
+                  )}
 
                   {/* VOICE NOTE AUDIO PLAYER CARD */}
                   {msg.audioUrl && (
-                    <div className={`p-2.5 sm:p-3 rounded-xl border space-y-2 mt-1 min-w-[200px] sm:min-w-[250px] ${
+                    <div className={`p-2.5 sm:p-3 rounded-xl border space-y-2 mt-1 w-full min-w-[210px] max-w-[280px] sm:min-w-[250px] ${
                       isMe ? 'bg-emerald-800 border-emerald-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                     }`}>
                       <div className="flex items-center gap-2.5">
                         <button
                           type="button"
                           onClick={() => togglePlayVoiceNote(msgUniqueKey, msg.audioUrl)}
-                          className="w-9 h-9 rounded-full bg-amber-400 hover:bg-amber-300 text-slate-950 flex items-center justify-center shrink-0 shadow-md font-bold transition-transform active:scale-95"
+                          className="w-10 h-10 rounded-full bg-amber-400 hover:bg-amber-300 text-slate-950 flex items-center justify-center shrink-0 shadow-md font-bold transition-transform active:scale-95"
+                          title="وائس پیغام چلائیں"
                         >
                           {isPlayingThis ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
                         </button>
@@ -1149,8 +1533,8 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
                           <div className={`flex justify-between items-center text-[10px] font-mono ${
                             isMe ? 'text-emerald-200' : 'text-slate-600'
                           }`}>
-                            <span className="font-bold truncate">{isPlayingThis ? (isUrdu ? '🔊 آواز چل رہی ہے...' : '🔊 Playing voice...') : (isUrdu ? '🎙️ آڈیو وائس پیغام' : '🎙️ Voice Note')}</span>
-                            <span className="font-bold shrink-0">{msg.audioDuration || '00:12'}</span>
+                            <span className="font-bold truncate">{isPlayingThis ? (isUrdu ? '🔊 آواز چل رہی ہے...' : '🔊 Playing...') : (isUrdu ? '🎙️ وائس پیغام' : '🎙️ Voice Note')}</span>
+                            <span className="font-bold shrink-0 ml-1">{msg.audioDuration || '00:12'}</span>
                           </div>
                         </div>
                       </div>
@@ -1166,7 +1550,7 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
 
                     if (isPdf) {
                       return (
-                        <div className={`p-3 rounded-2xl border space-y-2 mt-1 ${
+                        <div className={`p-2.5 sm:p-3 rounded-2xl border space-y-2 mt-1 ${
                           isMe ? 'bg-emerald-900 border-emerald-700 text-white' : 'bg-slate-50 border-slate-200 text-slate-900'
                         }`}>
                           <div className="flex items-center justify-between text-[11px] font-bold border-b border-slate-200/40 pb-2 gap-2">
@@ -1175,17 +1559,17 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
                               <span className="truncate">{msg.documentType || (isUrdu ? '📄 PDF میڈیکل ڈاکومنٹ' : '📄 PDF Document')}</span>
                             </span>
                             <span className="bg-red-500/20 text-red-300 px-2 py-0.5 rounded text-[9px] font-bold shrink-0 border border-red-500/30">
-                              PDF Document
+                              PDF
                             </span>
                           </div>
 
-                          <div className="flex items-center gap-3 p-3 bg-red-950/20 border border-red-500/30 rounded-xl">
-                            <div className="p-2.5 bg-red-600/20 rounded-lg text-red-400 shrink-0">
-                              <FileText className="w-7 h-7" />
+                          <div className="flex items-center gap-2.5 p-2.5 bg-red-950/20 border border-red-500/30 rounded-xl">
+                            <div className="p-2 bg-red-600/20 rounded-lg text-red-400 shrink-0">
+                              <FileText className="w-6 h-6" />
                             </div>
                             <div className="min-w-0 flex-1">
                               <p className="text-xs font-bold truncate">hafiz_clinic_report.pdf</p>
-                              <p className="text-[10px] text-slate-300 opacity-80">{isUrdu ? 'طبی پورٹل لیبارٹری / نسخہ ڈاکومنٹ' : 'Medical Portal Lab / Rx Document'}</p>
+                              <p className="text-[10px] text-slate-300 opacity-80 truncate">{isUrdu ? 'طبی پورٹل لیبارٹری / نسخہ ڈاکومنٹ' : 'Medical Portal Lab / Rx Document'}</p>
                             </div>
                           </div>
 
@@ -1194,18 +1578,18 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
                               href={msg.attachmentUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-1.5 rounded-lg text-center text-[10px] flex items-center justify-center gap-1 transition-colors"
+                              className="flex-1 bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 rounded-lg text-center text-[10px] flex items-center justify-center gap-1 transition-colors active:scale-95"
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
-                              <span>{isUrdu ? 'پریویو / دیکھیں' : 'Preview'}</span>
+                              <span>{isUrdu ? 'پریویو' : 'Preview'}</span>
                             </a>
                             <button
                               type="button"
                               onClick={() => handleDownloadAttachment(msg.attachmentUrl!, 'hafiz_clinic_report.pdf')}
-                              className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-1.5 rounded-lg text-center text-[10px] flex items-center justify-center gap-1 transition-colors shadow-xs"
+                              className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg text-center text-[10px] flex items-center justify-center gap-1 transition-colors shadow-xs active:scale-95"
                             >
                               <Download className="w-3.5 h-3.5" />
-                              <span>{isUrdu ? 'ڈاؤن لوڈ PDF' : 'Download PDF'}</span>
+                              <span>{isUrdu ? 'ڈاؤن لوڈ' : 'Download'}</span>
                             </button>
                           </div>
                         </div>
@@ -1213,7 +1597,7 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
                     }
 
                     return (
-                      <div className={`p-2.5 sm:p-3 rounded-xl border space-y-2 mt-1 ${
+                      <div className={`p-2 sm:p-3 rounded-xl border space-y-2 mt-1 ${
                         isMe ? 'bg-emerald-800 border-emerald-600' : 'bg-slate-50 border-slate-200'
                       }`}>
                         <div className="flex items-center justify-between text-[11px] font-bold border-b border-slate-200/40 pb-1.5 gap-2">
@@ -1222,7 +1606,7 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
                             <span className="truncate">{msg.documentType || 'منسلک شدہ تصویر'}</span>
                           </span>
                           <span className="bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded text-[9px] font-bold shrink-0">
-                            Image Document
+                            Image
                           </span>
                         </div>
 
@@ -1234,7 +1618,7 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
                           <img
                             src={msg.attachmentUrl}
                             alt="Document Preview"
-                            className="w-full h-40 sm:h-48 object-cover group-hover:scale-105 transition-transform"
+                            className="w-full h-36 sm:h-48 object-cover group-hover:scale-105 transition-transform"
                           />
                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-1">
                             <ExternalLink className="w-4 h-4" />
@@ -1246,7 +1630,7 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
                           <button
                             type="button"
                             onClick={() => handleDownloadAttachment(msg.attachmentUrl!, 'medical_document.jpg')}
-                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-1.5 rounded-lg text-center text-[10px] flex items-center justify-center gap-1 shadow-xs"
+                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg text-center text-[10px] flex items-center justify-center gap-1 shadow-xs active:scale-95"
                           >
                             <Download className="w-3.5 h-3.5" />
                             <span>ڈاؤن لوڈ (Download)</span>
@@ -1274,9 +1658,29 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
           <div ref={chatEndRef} />
         </div>
 
-        {/* ATTACHMENT SELECTED PREVIEW BAR (NO CLUTTERED HORIZONTAL SCROLLBARS) */}
+        {/* Floating Jump to Bottom Button */}
+        {showJumpBottom && (
+          <button
+            type="button"
+            onClick={() => {
+              setUnreadNewCount(0);
+              scrollToLatestMessage(true, true);
+            }}
+            className="absolute bottom-20 right-4 sm:right-6 z-30 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs px-3.5 py-2 rounded-full shadow-2xl border-2 border-amber-400 flex items-center gap-1.5 transition-all active:scale-95 animate-bounce cursor-pointer"
+            title={isUrdu ? 'نیچے آخری پیغام پر جائیں' : 'Scroll to latest message'}
+          >
+            <ChevronDown className="w-4 h-4 text-amber-300 shrink-0" />
+            <span className="truncate">
+              {unreadNewCount > 0
+                ? (isUrdu ? `${unreadNewCount} نیا پیغام ↓` : `${unreadNewCount} New Message ↓`)
+                : (isUrdu ? 'نیچے جائیں ↓' : 'Scroll to latest ↓')}
+            </span>
+          </button>
+        )}
+
+        {/* ATTACHMENT SELECTED PREVIEW BAR */}
         {attachmentUrl && (
-          <div className="bg-emerald-50 border-t border-emerald-200 p-2.5 px-4 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs gap-2 shrink-0">
+          <div className="bg-emerald-50 border-t border-emerald-200 p-2 sm:p-2.5 px-3 sm:px-4 flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs gap-2 shrink-0">
             <div className="flex items-center gap-2 min-w-0">
               <Paperclip className="w-4 h-4 text-emerald-700 shrink-0" />
               <span className="font-bold text-emerald-950 truncate">
@@ -1308,13 +1712,13 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
           </div>
         )}
 
-        {/* Message Input Bar */}
-        <form onSubmit={handleSendMessage} className="bg-white p-2.5 sm:p-3 border-t border-slate-200 flex items-center gap-2 shrink-0 shadow-md">
+        {/* Message Input Bar - Responsive Bottom Bar */}
+        <form onSubmit={handleSendMessage} className="bg-white p-2 sm:p-3 border-t border-slate-200 flex items-center gap-2 shrink-0 shadow-md sticky bottom-0 z-20 pb-safe">
           
           {/* File Attachment Button */}
           <label
             htmlFor="wa-file-input"
-            className="p-2.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-full cursor-pointer transition-colors border border-amber-300 shadow-xs shrink-0"
+            className="w-10 h-10 bg-amber-100 hover:bg-amber-200 active:bg-amber-300 text-amber-900 rounded-full cursor-pointer transition-colors border border-amber-300 shadow-xs shrink-0 flex items-center justify-center active:scale-95"
             title="فائل یا لیب رپورٹ منسلک کریں"
           >
             <Paperclip className="w-5 h-5 text-amber-800" />
@@ -1332,7 +1736,7 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
             <div className="flex-1 bg-rose-50 border border-rose-300 rounded-2xl px-3 py-2 flex items-center justify-between animate-pulse text-xs text-rose-800 font-bold min-w-0">
               <div className="flex items-center gap-2 truncate">
                 <span className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-ping shrink-0"></span>
-                <span className="truncate">وائس نوٹ ریکارڈ ہو رہا ہے...</span>
+                <span className="truncate text-xs">وائس نوٹ ریکارڈ...</span>
                 <span className="font-mono text-white bg-rose-700 px-2 py-0.5 rounded text-[11px] shrink-0">
                   00:{recordingSeconds < 10 ? '0' + recordingSeconds : recordingSeconds}
                 </span>
@@ -1340,7 +1744,7 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
               <button
                 type="button"
                 onClick={cancelVoiceRecording}
-                className="p-1 bg-white text-rose-600 hover:bg-rose-100 rounded-full border border-rose-200 shrink-0 ml-1"
+                className="p-1.5 bg-white text-rose-600 hover:bg-rose-100 rounded-full border border-rose-200 shrink-0 ml-1 active:scale-95"
                 title="ریکارڈنگ منسوخ کریں"
               >
                 <Trash2 className="w-4 h-4" />
@@ -1353,10 +1757,10 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
               onChange={(e) => setInputMessage(e.target.value)}
               placeholder={
                 isUrdu
-                  ? 'پیغام یا سوال تحریر کریں...'
+                  ? 'پیغام تحریر کریں...'
                   : 'Type your message...'
               }
-              className="flex-1 min-w-0 bg-slate-50 border border-slate-300 rounded-2xl px-3.5 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-emerald-600 focus:bg-white"
+              className="flex-1 min-w-0 bg-slate-100/90 border border-slate-300 rounded-2xl px-3.5 py-2.5 text-base sm:text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:bg-white"
             />
           )}
 
@@ -1365,31 +1769,31 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
             <button
               type="button"
               onClick={stopAndSendVoiceRecording}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white p-2.5 rounded-2xl font-bold flex items-center justify-center gap-1 shadow-md shrink-0"
+              className="w-10 h-10 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-full font-bold flex items-center justify-center shadow-md shrink-0 active:scale-95 transition-transform"
               title="وائس نوٹ بھیجیں"
             >
-              <Send className="w-4 h-4" />
+              <Send className="w-4 h-4 ml-0.5" />
             </button>
           ) : (
             <button
               type="button"
               onClick={startVoiceRecording}
-              className="p-2.5 bg-slate-100 hover:bg-emerald-100 text-emerald-800 rounded-full border border-slate-300 transition-colors shrink-0"
+              className="w-10 h-10 bg-slate-100 hover:bg-emerald-100 active:bg-emerald-200 text-emerald-800 rounded-full border border-slate-300 transition-colors shrink-0 flex items-center justify-center active:scale-95"
               title="وائس پیغام ریکارڈ کریں"
             >
               <Mic className="w-5 h-5 text-emerald-700" />
             </button>
           )}
 
-          {/* TEXT SEND BUTTON - ALWAYS VISIBLE */}
+          {/* TEXT SEND BUTTON - ALWAYS VISIBLE WHEN NOT RECORDING */}
           {!isRecording && (
             <button
               type="submit"
               disabled={isUploading}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white p-2.5 rounded-2xl font-bold flex items-center justify-center gap-1 shadow-md shrink-0 transition-colors"
+              className="w-10 h-10 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-full font-bold flex items-center justify-center shadow-md shrink-0 transition-transform active:scale-95 disabled:opacity-50"
               title="پیغام بھیجیں"
             >
-              <Send className="w-4 h-4" />
+              <Send className="w-4 h-4 ml-0.5" />
             </button>
           )}
         </form>
@@ -1544,75 +1948,109 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
 
                 {/* WhatsApp Accept / Decline Action Controls */}
                 <div className="flex items-center gap-8 sm:gap-12 pt-6">
-                  {/* DECLINE BUTTON */}
+                  {/* DECLINE / CANCEL BUTTON */}
                   <div className="flex flex-col items-center gap-2">
                     <button
                       onClick={declineCall}
                       className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center shadow-2xl transition-transform active:scale-95"
-                      title="مسترد کریں (Decline)"
+                      title={activeCall.mode === 'incoming' ? "مسترد کریں (Decline)" : "کال منقطع کریں (Cancel Call)"}
                     >
                       <PhoneOff className="w-8 h-8 sm:w-10 sm:h-10" />
                     </button>
-                    <span className="text-xs font-bold text-rose-300">{isUrdu ? 'مسترد کریں' : 'Decline'}</span>
+                    <span className="text-xs font-bold text-rose-300">
+                      {activeCall.mode === 'incoming' ? (isUrdu ? 'مسترد کریں' : 'Decline') : (isUrdu ? 'منقطع کریں' : 'Cancel')}
+                    </span>
                   </div>
 
-                  {/* ACCEPT BUTTON */}
-                  <div className="flex flex-col items-center gap-2">
-                    <button
-                      onClick={acceptCall}
-                      className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 flex items-center justify-center shadow-2xl transition-transform active:scale-95 ring-4 ring-emerald-400/40 animate-bounce"
-                      title="قبول کریں (Accept Call)"
-                    >
-                      <Phone className="w-8 h-8 sm:w-10 sm:h-10 text-slate-950 fill-current" />
-                    </button>
-                    <span className="text-xs font-bold text-emerald-300">{isUrdu ? 'کال اٹھائیں' : 'Accept Call'}</span>
-                  </div>
+                  {/* ACCEPT BUTTON (FOR INCOMING CALLS) */}
+                  {activeCall.mode === 'incoming' && (
+                    <div className="flex flex-col items-center gap-2">
+                      <button
+                        onClick={acceptCall}
+                        className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 flex items-center justify-center shadow-2xl transition-transform active:scale-95 ring-4 ring-emerald-400/40 animate-bounce"
+                        title="قبول کریں (Accept Call)"
+                      >
+                        <Phone className="w-8 h-8 sm:w-10 sm:h-10 text-slate-950 fill-current" />
+                      </button>
+                      <span className="text-xs font-bold text-emerald-300">{isUrdu ? 'کال اٹھائیں' : 'Accept Call'}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : activeCall.type === 'video' ? (
-              /* CONNECTED VIDEO CALL VIEW */
-              <div className="relative w-full h-[320px] sm:h-[400px] rounded-3xl overflow-hidden bg-slate-900 border-2 border-slate-800 shadow-2xl flex flex-col items-center justify-center">
-                {/* Video Feed */}
-                {isVideoOff ? (
-                  <div className="flex flex-col items-center justify-center gap-3">
-                    <img
-                      src={activeCall.contact.image}
-                      alt={activeCall.contact.nameUrdu}
-                      className="w-24 h-24 sm:w-28 sm:h-28 rounded-full object-cover border-4 border-slate-700 opacity-60"
-                    />
-                    <div className="text-xs font-bold text-slate-400">{isUrdu ? 'کیمرہ بند ہے' : 'Camera Off'}</div>
-                  </div>
-                ) : (
-                  <div className="relative w-full h-full">
-                    <video
-                      ref={videoElementRef}
-                      autoPlay
-                      playsInline
-                      muted={isMuted}
-                      className="w-full h-full object-cover"
-                    />
-                    {/* Fallback Overlay if camera stream isn't initialized */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/40 to-slate-950/20 flex flex-col items-center justify-center p-4">
-                      <img
-                        src={activeCall.contact.image}
-                        alt={activeCall.contact.nameUrdu}
-                        className="w-24 h-24 sm:w-32 sm:h-32 rounded-full object-cover border-4 border-amber-400 shadow-2xl animate-pulse mb-3"
-                      />
-                      <div className="font-bold text-base sm:text-lg text-white text-center">
-                        {isUrdu ? activeCall.contact.nameUrdu : activeCall.contact.nameEnglish}
+              /* CONNECTED VIDEO CALL VIEW (WHATSAPP DUAL PIP STYLE WITH SWAP VIEW) */
+              <div className="relative w-full h-[55vh] sm:h-[450px] max-h-[550px] rounded-3xl overflow-hidden bg-slate-950 border-2 border-slate-800 shadow-2xl flex flex-col items-center justify-center group">
+                {/* MAIN SCREEN VIDEO FEED (Remote Participant by default, or Local if swapped) */}
+                <div className="relative w-full h-full bg-slate-900 flex items-center justify-center overflow-hidden">
+                  <video
+                    ref={isSwappedVideo ? localVideoRef : remoteVideoRef}
+                    autoPlay
+                    playsInline
+                    muted={isSwappedVideo}
+                    className={`w-full h-full object-cover ${isSwappedVideo ? 'scale-x-[-1]' : ''}`}
+                  />
+
+                  {/* Fallback Screen for Main View if camera stream is off or remote stream hasn't arrived */}
+                  {((!isSwappedVideo && (!remoteStreamState || remoteStreamState.getVideoTracks().length === 0)) ||
+                    (isSwappedVideo && isVideoOff)) && (
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/80 to-slate-950/60 flex flex-col items-center justify-center p-6 text-center">
+                      <div className="relative mb-4">
+                        <span className="absolute -inset-4 rounded-full bg-emerald-500/20 animate-ping"></span>
+                        <img
+                          src={isSwappedVideo ? (currentUser?.image || 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=600') : activeCall.contact.image}
+                          alt={activeCall.contact.nameUrdu}
+                          className="w-28 h-28 sm:w-36 sm:h-36 rounded-full object-cover border-4 border-amber-400 shadow-2xl relative z-10"
+                        />
                       </div>
-                      <div className="text-xs text-emerald-400 font-semibold mt-1">
-                        {isUrdu ? '📹 ایچ ڈی ویڈیو میڈیکل سیشن آن لائن' : '📹 HD Video Stream Active'}
+                      <div className="font-bold text-lg sm:text-xl text-white">
+                        {isSwappedVideo ? userName : (isUrdu ? activeCall.contact.nameUrdu : activeCall.contact.nameEnglish)}
+                      </div>
+                      <div className="text-xs text-emerald-400 font-semibold mt-1 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span>{isUrdu ? '📹 ایچ ڈی لائیو ویڈیو معائنہ آن لائن' : '📹 Live HD Video Consultation'}</span>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {/* Self Picture-in-Picture Preview */}
-                <div className="absolute bottom-3 right-3 w-24 sm:w-32 h-20 sm:h-24 bg-slate-800 rounded-2xl border-2 border-emerald-500 overflow-hidden shadow-lg flex items-center justify-center">
-                  <div className="text-[10px] text-center font-bold text-emerald-300 p-1">
-                    <User className="w-5 h-5 mx-auto mb-0.5 text-amber-300" />
-                    <span>{userName}</span>
+                  {/* Top Info Tag in Video View */}
+                  <div className="absolute top-3 left-3 bg-slate-950/70 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-700/60 text-white text-[11px] font-bold flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span>
+                      {isSwappedVideo
+                        ? (isUrdu ? 'آپ کی سکرین (آپ کا کیمرہ)' : 'Your Camera (Main Screen)')
+                        : (isUrdu ? `${activeCall.contact.nameUrdu} (لائیو ویڈیو)` : `${activeCall.contact.nameEnglish} (Live Video)`)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* FLOATING PICTURE-IN-PICTURE (PiP) SMALL WINDOW (WhatsApp style - Tap to Swap!) */}
+                <div
+                  onClick={() => setIsSwappedVideo(!isSwappedVideo)}
+                  className="absolute top-4 right-4 w-28 sm:w-36 h-36 sm:h-48 bg-slate-900 rounded-2xl border-2 border-amber-400 overflow-hidden shadow-2xl cursor-pointer hover:scale-105 transition-all z-20 group/pip"
+                  title={isUrdu ? 'اسکرین تبدیل کرنے کے لیے ٹیپ کریں (Tap to Swap)' : 'Tap to Swap Screen'}
+                >
+                  <video
+                    ref={isSwappedVideo ? remoteVideoRef : localVideoRef}
+                    autoPlay
+                    playsInline
+                    muted={!isSwappedVideo}
+                    className={`w-full h-full object-cover ${!isSwappedVideo ? 'scale-x-[-1]' : ''}`}
+                  />
+
+                  {/* PiP Overlay Fallback if video is off */}
+                  {((!isSwappedVideo && isVideoOff) ||
+                    (isSwappedVideo && (!remoteStreamState || remoteStreamState.getVideoTracks().length === 0))) && (
+                    <div className="absolute inset-0 bg-slate-900 flex flex-col items-center justify-center p-2 text-center">
+                      <User className="w-8 h-8 text-amber-300 mb-1" />
+                      <span className="text-[10px] font-bold text-slate-300 truncate w-full px-1">
+                        {!isSwappedVideo ? (isUrdu ? 'آپ کا کیمرہ' : 'Your Video') : (isUrdu ? activeCall.contact.nameUrdu : 'Remote')}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Small Tap-to-Swap Badge */}
+                  <div className="absolute bottom-1 left-1 right-1 bg-slate-950/80 backdrop-blur-xs text-[9px] text-center font-bold text-amber-300 rounded py-0.5 px-1 truncate opacity-95 group-hover/pip:opacity-100">
+                    🔄 {isUrdu ? 'تبدیل کریں' : 'Tap Swap'}
                   </div>
                 </div>
               </div>
@@ -1629,14 +2067,26 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
                   />
                 </div>
 
-                <div className="text-center space-y-1">
+                <div className="text-center space-y-2">
                   <h3 className="font-black text-lg sm:text-xl text-white">
                     {isUrdu ? activeCall.contact.nameUrdu : activeCall.contact.nameEnglish}
                   </h3>
                   <p className="text-xs text-amber-300 font-semibold">{activeCall.contact.qualification}</p>
-                  <p className="text-xs text-emerald-400 font-bold">
-                    {isUrdu ? '🔊 آن لائن آڈیو مشورہ جاری ہے' : '🔊 HD Audio Call Connected'}
-                  </p>
+                  
+                  {/* Live Speaker Voice Badge & Mode Indicator */}
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-1">
+                    <span className="bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 px-3 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 shadow-sm">
+                      <Volume2 className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                      <span>{isDoctor ? (isUrdu ? '🗣️ مریض کی آواز اسپیکر سے آ رہی ہے' : '🗣️ Patient Remote Voice Active') : (isUrdu ? '🗣️ معالج کی آواز اسپیکر سے آ رہی ہے' : '🗣️ Doctor Remote Voice Active')}</span>
+                    </span>
+
+                    <span className={`border px-3 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 shadow-sm ${
+                      speakerMode === 'loudspeaker' ? 'bg-amber-500/20 text-amber-300 border-amber-500/50' : 'bg-sky-500/20 text-sky-300 border-sky-500/50'
+                    }`}>
+                      {speakerMode === 'loudspeaker' ? <Volume2 className="w-3.5 h-3.5" /> : <Smartphone className="w-3.5 h-3.5" />}
+                      <span>{speakerMode === 'loudspeaker' ? (isUrdu ? '🔊 بڑا اسپیکر (100% Volume)' : '🔊 Loudspeaker (100% Vol)') : (isUrdu ? '📱 چھوٹا اسپیکر / ایئر پیس (30% Volume)' : '📱 Ear Speaker (30% Vol)')}</span>
+                    </span>
+                  </div>
                 </div>
 
                 {/* Audio Waveform Animation */}
@@ -1658,7 +2108,7 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
 
           {/* Call Controls Bar (For Connected Call) */}
           {activeCall.status === 'connected' && (
-            <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 p-4 rounded-3xl flex items-center justify-center gap-4 sm:gap-6 shadow-2xl">
+            <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 p-3 sm:p-4 rounded-3xl flex items-center justify-center gap-3 sm:gap-5 shadow-2xl flex-wrap">
               {/* Mute Button */}
               <button
                 onClick={() => setIsMuted(!isMuted)}
@@ -1670,17 +2120,56 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
                 {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6 text-amber-300" />}
               </button>
 
+              {/* Speaker Mode Toggle: Loudspeaker vs Ear Speaker (Bada vs Chhota Speaker) */}
+              <button
+                onClick={() => setSpeakerMode((prev) => (prev === 'loudspeaker' ? 'earpiece' : 'loudspeaker'))}
+                className={`p-3.5 sm:p-4 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 ${
+                  speakerMode === 'loudspeaker'
+                    ? 'bg-amber-400 hover:bg-amber-300 text-slate-950 shadow-lg ring-2 ring-amber-300'
+                    : 'bg-sky-600 hover:bg-sky-500 text-white shadow-lg ring-2 ring-sky-400'
+                }`}
+                title={
+                  speakerMode === 'loudspeaker'
+                    ? (isUrdu ? 'چھوٹے اسپیکر (Earpiece) پر منتقل کریں' : 'Switch to Ear Speaker')
+                    : (isUrdu ? 'بڑے اسپیکر (Loudspeaker) پر منتقل کریں' : 'Switch to Loudspeaker')
+                }
+              >
+                {speakerMode === 'loudspeaker' ? (
+                  <>
+                    <Volume2 className="w-6 h-6 text-slate-950" />
+                    <span className="text-xs font-black hidden sm:inline">{isUrdu ? 'بڑا اسپیکر' : 'Loudspeaker'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Smartphone className="w-6 h-6 text-white" />
+                    <span className="text-xs font-black hidden sm:inline">{isUrdu ? 'چھوٹا اسپیکر' : 'Ear Speaker'}</span>
+                  </>
+                )}
+              </button>
+
               {/* Camera Toggle Button (For Video Calls) */}
               {activeCall.type === 'video' && (
-                <button
-                  onClick={() => setIsVideoOff(!isVideoOff)}
-                  className={`p-3.5 sm:p-4 rounded-2xl font-bold transition-all ${
-                    isVideoOff ? 'bg-rose-600 text-white shadow-lg' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
-                  }`}
-                  title={isVideoOff ? 'کیمرہ آن کریں' : 'کیمرہ بند کریں'}
-                >
-                  {isVideoOff ? <VideoOff className="w-6 h-6" /> : <Video className="w-6 h-6 text-emerald-400" />}
-                </button>
+                <>
+                  <button
+                    onClick={() => setIsVideoOff(!isVideoOff)}
+                    className={`p-3.5 sm:p-4 rounded-2xl font-bold transition-all ${
+                      isVideoOff ? 'bg-rose-600 text-white shadow-lg' : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                    }`}
+                    title={isVideoOff ? 'کیمرہ آن کریں' : 'کیمرہ بند کریں'}
+                  >
+                    {isVideoOff ? <VideoOff className="w-6 h-6" /> : <Video className="w-6 h-6 text-emerald-400" />}
+                  </button>
+
+                  {/* Swap Video Screen Button (Main vs PiP) */}
+                  <button
+                    onClick={() => setIsSwappedVideo(!isSwappedVideo)}
+                    className="p-3.5 sm:p-4 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/50 text-amber-300 font-bold transition-all flex items-center justify-center gap-1.5"
+                    title={isUrdu ? 'اسکرین تبدیل کریں (Swap Screen)' : 'Swap Video Screen'}
+                  >
+                    <Smartphone className="w-6 h-6 text-amber-300" />
+                    <span className="text-xs font-bold hidden sm:inline">{isUrdu ? 'تبدیل کریں' : 'Swap View'}</span>
+                  </button>
+                </>
               )}
 
               {/* Speaker Mute Button */}
@@ -1697,7 +2186,7 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
               {/* End Call Button */}
               <button
                 onClick={endCall}
-                className="p-4 sm:p-5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-black shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2"
+                className="p-3.5 sm:p-4 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-black shadow-xl transition-all active:scale-95 flex items-center justify-center gap-2 ml-1"
                 title="کال ختم کریں"
               >
                 <PhoneOff className="w-6 h-6" />
@@ -1707,6 +2196,9 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
           )}
         </div>
       )}
+
+      {/* Hidden Live Audio Stream Element for Call Speaker Output */}
+      <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
     </div>
   );
 };

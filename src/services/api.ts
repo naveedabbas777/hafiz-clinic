@@ -220,6 +220,9 @@ export async function sendMessageApi(msgData: {
   receiverRole: 'patient' | 'doctor';
   text: string;
   attachmentUrl?: string;
+  audioUrl?: string;
+  audioDuration?: string;
+  documentType?: string;
   reportId?: string;
 }) {
   try {
@@ -231,6 +234,76 @@ export async function sendMessageApi(msgData: {
     return await res.json();
   } catch (err: any) {
     return { success: false, message: err.message };
+  }
+}
+
+// Telemedicine Realtime Call API Helpers
+export async function getActiveCallApi(userId: string) {
+  try {
+    const res = await fetch(`/api/calls/active?userId=${encodeURIComponent(userId)}`);
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, call: null };
+  }
+}
+
+export async function startCallApi(callData: {
+  callerId: string;
+  callerName: string;
+  callerRole: 'patient' | 'doctor';
+  receiverId: string;
+  receiverName: string;
+  receiverRole: 'patient' | 'doctor';
+  type: 'audio' | 'video';
+}) {
+  try {
+    const res = await fetch('/api/calls/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(callData),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, call: null };
+  }
+}
+
+export async function acceptCallApi(callId: string) {
+  try {
+    const res = await fetch('/api/calls/accept', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callId }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, call: null };
+  }
+}
+
+export async function declineCallApi(callId: string) {
+  try {
+    const res = await fetch('/api/calls/decline', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callId }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, call: null };
+  }
+}
+
+export async function endCallApi(callId: string) {
+  try {
+    const res = await fetch('/api/calls/end', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callId }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, call: null };
   }
 }
 
@@ -306,6 +379,28 @@ export async function updateAppointmentApi(id: string, data: any) {
     return await res.json();
   } catch (err: any) {
     return { success: false, message: err.message };
+  }
+}
+
+export async function sendCallSignalApi(callId: string, userId: string, signal: any) {
+  try {
+    const res = await fetch('/api/calls/signal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callId, userId, signal }),
+    });
+    return await res.json();
+  } catch (e) {
+    return { success: false };
+  }
+}
+
+export async function getCallSignalsApi(callId: string, userId: string) {
+  try {
+    const res = await fetch(`/api/calls/signals?callId=${encodeURIComponent(callId)}&userId=${encodeURIComponent(userId)}`);
+    return await res.json();
+  } catch (e) {
+    return { success: false, signals: [] };
   }
 }
 

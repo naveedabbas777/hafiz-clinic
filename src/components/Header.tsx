@@ -152,9 +152,18 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           {/* User Portals Quick Menu */}
-          <div className="flex items-center gap-1 pl-2 border-l border-gray-200">
+          <div className="flex items-center gap-1.5 pl-2 border-l border-gray-200">
+            <button
+              onClick={() => setActiveView('doctor-portal')}
+              title="Official Doctor Portal"
+              className="px-2.5 py-1.5 bg-emerald-900 hover:bg-emerald-950 text-amber-300 hover:text-amber-200 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm border border-emerald-700 transition-all cursor-pointer"
+            >
+              <Stethoscope className="w-4 h-4 text-emerald-400" />
+              <span>{language === 'urdu' ? 'معالج پورٹل' : 'Doctor Portal'}</span>
+            </button>
+
             {currentUser ? (
-              <div className="flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+              <div className="flex items-center gap-1.5 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-200">
                 <button
                   onClick={() => setActiveView('patient-portal')}
                   className="flex items-center gap-1 text-xs font-bold text-emerald-950 hover:underline"
@@ -174,19 +183,19 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 onClick={() => setActiveView('patient-portal')}
                 title="Patient Portal"
-                className="p-2 text-gray-600 hover:text-emerald-700 hover:bg-gray-100 rounded-lg text-xs flex items-center gap-1"
+                className="p-1.5 text-gray-600 hover:text-emerald-700 hover:bg-gray-100 rounded-lg text-xs flex items-center gap-1"
               >
                 <User className="w-4 h-4" />
-                <span className="text-[11px] font-medium">{language === 'urdu' ? 'مریض لاگ ان / سائن اپ' : 'Patient Login/Signup'}</span>
+                <span className="text-[11px] font-medium hidden sm:inline">{language === 'urdu' ? 'مریض لاگ ان' : 'Patient Login'}</span>
               </button>
             )}
             <button
               onClick={() => setActiveView('admin')}
               title="Admin Panel"
-              className="p-2 text-gray-600 hover:text-emerald-700 hover:bg-gray-100 rounded-lg text-xs flex items-center gap-1"
+              className="p-1.5 text-gray-600 hover:text-emerald-700 hover:bg-gray-100 rounded-lg text-xs flex items-center gap-1"
             >
               <Lock className="w-4 h-4" />
-              <span className="text-[11px] font-medium">{language === 'urdu' ? 'ایڈمن' : 'Admin'}</span>
+              <span className="text-[11px] font-medium hidden sm:inline">{language === 'urdu' ? 'ایڈمن' : 'Admin'}</span>
             </button>
           </div>
         </div>

@@ -1,6 +1,5 @@
 import express from 'express';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 
 import { connectDB } from './server/config/db';
@@ -17,11 +16,9 @@ import userRoutes from './server/routes/userRoutes';
 import messageRoutes from './server/routes/messageRoutes';
 import reportRoutes from './server/routes/reportRoutes';
 import uploadRoutes from './server/routes/uploadRoutes';
+import callRoutes from './server/routes/callRoutes';
 
 const PORT = 3000;
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
@@ -46,6 +43,7 @@ async function startServer() {
   app.use('/api/messages', messageRoutes);
   app.use('/api/reports', reportRoutes);
   app.use('/api/upload', uploadRoutes);
+  app.use('/api/calls', callRoutes);
 
   // Vite Development / Production SPA Middleware
   if (process.env.NODE_ENV !== 'production') {

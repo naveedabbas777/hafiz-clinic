@@ -224,19 +224,21 @@ export default function App() {
       className="min-h-screen bg-slate-50 font-sans text-slate-900 selection:bg-emerald-200 selection:text-emerald-900"
       dir={isUrdu ? 'rtl' : 'ltr'}
     >
-      {/* Header */}
-      <Header
-        settings={settings}
-        cartCount={cart.reduce((s, i) => s + i.quantity, 0)}
-        activeView={activeView}
-        setActiveView={setActiveView}
-        onOpenAppointment={() => handleOpenAppointment()}
-        onOpenCart={() => setActiveView('store')}
-        language={language}
-        setLanguage={setLanguage}
-        currentUser={currentUser}
-        onLogout={() => setCurrentUser(null)}
-      />
+      {/* Header (Hidden when inside dedicated Doctor Portal or Admin Portal) */}
+      {activeView !== 'doctor-portal' && activeView !== 'admin' && (
+        <Header
+          settings={settings}
+          cartCount={cart.reduce((s, i) => s + i.quantity, 0)}
+          activeView={activeView}
+          setActiveView={setActiveView}
+          onOpenAppointment={() => handleOpenAppointment()}
+          onOpenCart={() => setActiveView('store')}
+          language={language}
+          setLanguage={setLanguage}
+          currentUser={currentUser}
+          onLogout={() => setCurrentUser(null)}
+        />
+      )}
 
       {/* Main Body Routing */}
       <main>
@@ -394,7 +396,15 @@ export default function App() {
           />
         )}
 
-        {activeView === 'doctor-portal' && <DoctorPortalView appointments={appointments} doctors={doctors} language={language} />}
+        {activeView === 'doctor-portal' && (
+          <DoctorPortalView
+            appointments={appointments}
+            doctors={doctors}
+            language={language}
+            setActiveView={setActiveView}
+            setLanguage={setLanguage}
+          />
+        )}
 
         {activeView === 'admin' && (
           <AdminPanel
@@ -418,6 +428,8 @@ export default function App() {
             onAddArticle={handleAddArticle}
             onDeleteArticle={handleDeleteArticle}
             onUpdateAppointmentStatus={handleUpdateAppointmentStatus}
+            onAddAppointment={handleAddAppointment}
+            setActiveView={setActiveView}
             language={language}
             setLanguage={setLanguage}
           />
@@ -443,13 +455,15 @@ export default function App() {
         onAddAppointment={handleAddAppointment}
       />
 
-      {/* Footer */}
-      <Footer
-        settings={settings}
-        setActiveView={setActiveView}
-        onOpenAppointment={() => handleOpenAppointment()}
-        language={language}
-      />
+      {/* Footer (Hidden when inside dedicated Doctor Portal or Admin Portal) */}
+      {activeView !== 'doctor-portal' && activeView !== 'admin' && (
+        <Footer
+          settings={settings}
+          setActiveView={setActiveView}
+          onOpenAppointment={() => handleOpenAppointment()}
+          language={language}
+        />
+      )}
     </div>
   );
 }
