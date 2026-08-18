@@ -120,7 +120,7 @@ router.put('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     if (getMongoConnectedStatus()) {
-      const updated = await User.findByIdAndUpdate(id, req.body, { new: true }).select('-password');
+      const updated = await User.findByIdAndUpdate(id, req.body, { returnDocument: 'after' }).select('-password');
       if (updated) {
         return res.json({ success: true, user: updated });
       }

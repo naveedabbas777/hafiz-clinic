@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { TestTube, Search, Download, FileText, QrCode, CheckCircle2, ShieldCheck, Printer, RefreshCw } from 'lucide-react';
+import { printLabReportHtml, downloadLabReportPdf } from '../utils/printInvoice';
 
 interface LabReportsViewProps {
   language?: 'urdu' | 'english';
@@ -11,6 +12,7 @@ export const LabReportsView: React.FC<LabReportsViewProps> = ({ language = 'engl
   const [phoneInput, setPhoneInput] = useState('');
   const [searchResult, setSearchResult] = useState<any>(null);
   const [searched, setSearched] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   const mockDatabase: Record<string, any> = {
     'MRN-84920': {
@@ -51,7 +53,11 @@ export const LabReportsView: React.FC<LabReportsViewProps> = ({ language = 'engl
   };
 
   const handlePrint = () => {
-    window.print();
+    if (searchResult) {
+      printLabReportHtml(searchResult);
+    } else {
+      window.print();
+    }
   };
 
   return (
@@ -143,7 +149,7 @@ export const LabReportsView: React.FC<LabReportsViewProps> = ({ language = 'engl
         {searched && (
           <div>
             {searchResult ? (
-              <div id="printable-lab-report" className="bg-white rounded-2xl border-2 border-emerald-300 p-6 sm:p-8 shadow-lg space-y-6">
+              <div id="printable-lab-report" className="printable-area bg-white rounded-2xl border-2 border-emerald-300 p-6 sm:p-8 shadow-lg space-y-6">
                 {/* Printable Header */}
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-6 border-b border-gray-200 gap-4">
                   <div>
@@ -215,13 +221,30 @@ export const LabReportsView: React.FC<LabReportsViewProps> = ({ language = 'engl
                 </div>
 
                 {/* Print and Download Actions */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-gray-200">
+                <div className="no-print flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-gray-200">
                   <div className="flex items-center gap-2 text-xs text-emerald-800 font-bold">
                     <ShieldCheck className="w-4 h-4 text-emerald-600" />
                     <span>{isUrdu ? 'یہ رپورٹ باضابطہ طور پر الیکٹرانک تصدیق شدہ ہے۔' : 'Officially authenticated electronic laboratory report.'}</span>
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <button
+                      disabled={isGeneratingPdf}
+                      onClick={async () => {
+                        if (searchResult) {
+                          setIsGeneratingPdf(true);
+                          try {
+                            await downloadLabReportPdf(searchResult, 'printable-lab-report');
+                          } finally {
+                            setIsGeneratingPdf(false);
+                          }
+                        }
+                      }}
+                      className="bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow"
+                    >
+                      {isGeneratingPdf ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                      <span>{isUrdu ? 'ڈاؤنلوڈ PDF رپورٹ' : 'Save PDF'}</span>
+                    </button>
                     <button
                       onClick={handlePrint}
                       className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow"

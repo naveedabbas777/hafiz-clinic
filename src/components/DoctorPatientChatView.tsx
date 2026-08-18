@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Paperclip, FileText, User, Search, Phone, Video, Mic, X, ExternalLink, ShieldCheck, FileCheck, Lock, ArrowLeft, Play, Pause, Trash2, Download, CheckCheck, MicOff, VideoOff, PhoneOff, Volume2, VolumeX, Smartphone, ChevronDown } from 'lucide-react';
+import { Send, Paperclip, FileText, User, Search, Phone, Video, Mic, X, ExternalLink, ShieldCheck, FileCheck, Lock, ArrowLeft, Play, Pause, Trash2, Download, CheckCheck, MicOff, VideoOff, PhoneOff, Volume2, VolumeX, Smartphone, ChevronDown, MessageSquare } from 'lucide-react';
 import { Doctor } from '../types';
 import { getMessagesApi, sendMessageApi, createReportApi, uploadDiseaseImageApi, getUsersApi, getActiveCallApi, startCallApi, acceptCallApi, declineCallApi, endCallApi, sendCallSignalApi, getCallSignalsApi } from '../services/api';
 
@@ -259,31 +259,18 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
   // STRICT PRIVACY RULE: If user is a Patient, they ONLY see Doctor contacts.
   // If user is a Doctor, they see Patient contacts.
   const patientContactsList = dynamicPatients.length > 0 ? dynamicPatients : defaultPatientContactsList;
+  const otherDoctors = doctorContactsList.filter((d) => d.id !== userId);
   const allContacts: ContactItem[] = isDoctor
-    ? [...patientContactsList, ...doctorContactsList]
+    ? (patientContactsList.length > 0 ? [...patientContactsList, ...otherDoctors] : doctorContactsList)
     : doctorContactsList;
 
   const [activeContact, setActiveContact] = useState<ContactItem>(
-    allContacts[0] || doctorContactsList[0]
+    allContacts[0] || (isDoctor ? patientContactsList[0] : doctorContactsList[0])
   );
 
   const [searchQuery, setSearchQuery] = useState('');
 
-  const [messages, setMessages] = useState<MessageItem[]>([
-    {
-      id: 'm1',
-      senderId: activeContact.id,
-      senderName: activeContact.nameUrdu,
-      senderRole: activeContact.role,
-      receiverId: userId,
-      receiverName: userName,
-      receiverRole: isDoctor ? 'doctor' : 'patient',
-      text: isUrdu
-        ? `السلام علیکم! حافظ کلینک ٹیلی میڈیسن پورٹل میں خوش آمدید۔ میں ${activeContact.nameUrdu} ہوں، آپ اپنی بیماری، علامات اور رپورٹس یہاں شیئر کر سکتے ہیں۔`
-        : `Welcome to Hafiz Clinic Telemedicine Portal. I am ${activeContact.nameEnglish}. You can share your symptoms and reports here.`,
-      createdAt: new Date(Date.now() - 3600000).toISOString(),
-    },
-  ]);
+  const [messages, setMessages] = useState<MessageItem[]>([]);
 
   const [inputMessage, setInputMessage] = useState('');
   const [attachmentUrl, setAttachmentUrl] = useState('');
@@ -725,24 +712,9 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
             }
           }
         } else {
+          // Strictly empty conversation - do not auto-inject any greeting/reply
           setMessages((prev) => {
-            const hasUserMsgs = prev.some((m) => m.id && !m.id.startsWith('init_'));
-            if (hasUserMsgs) return prev;
-            return [
-              {
-                id: `init_${activeContact.id}`,
-                senderId: activeContact.id,
-                senderName: activeContact.nameUrdu,
-                senderRole: activeContact.role,
-                receiverId: userId,
-                receiverName: userName,
-                receiverRole: isDoctor ? 'doctor' : 'patient',
-                text: isUrdu
-                  ? `السلام علیکم! حافظ کلینک ٹیلی میڈیسن پورٹل میں خوش آمدید۔ میں ${activeContact.nameUrdu} ہوں، آپ اپنی بیماری کی تفصیلات اور رپورٹس یہاں شیئر کر سکتے ہیں۔`
-                  : `Welcome! I am ${activeContact.nameEnglish}. Please feel free to share your health details or test reports here.`,
-                createdAt: new Date(Date.now() - 1800000).toISOString(),
-              },
-            ];
+            return prev.filter((local) => local.id && !local.id.startsWith('init_') && !local.id.startsWith('m1'));
           });
         }
       }
@@ -1323,7 +1295,10 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
               <div
                 key={contact.id}
                 onClick={() => {
-                  setActiveContact(contact);
+                  if (activeContact.id !== contact.id) {
+                    setMessages([]);
+                    setActiveContact(contact);
+                  }
                   setShowMobileChat(true);
                   isUserNearBottomRef.current = true;
                   scrollToLatestMessage(true, false);
@@ -1469,7 +1444,24 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
 
         {/* Messages Stream */}
         <div ref={chatContainerRef} onScroll={handleChatScroll} className="flex-1 overflow-y-auto p-2.5 sm:p-5 space-y-3 sm:space-y-4 text-xs bg-slate-100/90 relative">
-          {messages.map((msg, idx) => {
+          {messages.length === 0 ? (
+            <div className="h-full min-h-[360px] flex flex-col items-center justify-center text-center p-6 text-slate-500 space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700 shadow-inner">
+                <MessageSquare className="w-7 h-7" />
+              </div>
+              <div className="space-y-1 max-w-sm">
+                <p className="font-black text-slate-800 text-sm">
+                  {isUrdu ? 'کوئی پرانا پیغام موجود نہیں ہے' : 'No Message History'}
+                </p>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  {isUrdu
+                    ? `آپ کی ${isDoctor ? activeContact.nameUrdu : (activeContact.nameUrdu || activeContact.nameEnglish)} کے ساتھ 100% پرائیویٹ براہ راست ون ٹو ون گفتگو ہے۔ نیا میسج لکھنے کے لیے نیچے ٹائپ کریں۔`
+                    : `Private 1-to-1 direct consultation with ${activeContact.nameEnglish || activeContact.nameUrdu}. Type a message below to start.`}
+                </p>
+              </div>
+            </div>
+          ) : (
+            messages.map((msg, idx) => {
             const isMe = msg.senderRole === (isDoctor ? 'doctor' : 'patient');
             const msgUniqueKey = msg.id || `msg_${idx}`;
             const isPlayingThis = playingAudioId === msgUniqueKey;
@@ -1654,7 +1646,7 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
                 </div>
               </div>
             );
-          })}
+          }))}
           <div ref={chatEndRef} />
         </div>
 

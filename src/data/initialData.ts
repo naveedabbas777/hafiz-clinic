@@ -35,6 +35,7 @@ export const initialDoctors: Doctor[] = [
     eveningTimingEnglish: '5:00 PM - 9:00 PM (Evening OPD)',
     image: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=600',
     phone: '+92 300 1234567',
+    checkupFee: 1500,
   },
   {
     id: 'doc-2',
@@ -52,6 +53,7 @@ export const initialDoctors: Doctor[] = [
     eveningTimingEnglish: '6:00 PM - 10:00 PM (Special Consultation)',
     image: 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=600',
     phone: '+92 345 7654321',
+    checkupFee: 2000,
   },
 ];
 

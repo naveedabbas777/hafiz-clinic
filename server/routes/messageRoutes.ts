@@ -4,19 +4,27 @@ import { getMongoConnectedStatus } from '../config/db';
 
 const router = Router();
 
-let inMemoryMessages: any[] = [
-  {
-    id: 'msg-1',
-    senderId: 'doc-1',
-    senderName: 'ڈاکٹر زیشان چوہدری',
-    senderRole: 'doctor',
-    receiverId: 'usr-1',
-    receiverName: 'محمد فاروق',
-    receiverRole: 'patient',
-    text: 'السلام علیکم! حافظ کلینک ٹیلی میڈیسن پورٹل میں خوش آمدید۔ آپ اپنی بیماری اور علامات شیئر کر سکتے ہیں۔',
-    createdAt: new Date(Date.now() - 3600000).toISOString(),
-  },
-];
+let inMemoryMessages: any[] = [];
+
+// Helper to get normalized aliases for strict 1-to-1 isolation
+const getAliases = (id: string): string[] => {
+  if (!id) return [];
+  const cleanId = String(id).trim().toLowerCase();
+  
+  if (['doc-1', 'doc1', 'doctor1', 'drzeeshan', 'dr.zeeshan@hafizclinic.com'].includes(cleanId)) {
+    return ['doc-1', 'doc1', 'doctor1', 'drzeeshan'];
+  }
+  if (['doc-2', 'doc2', 'doctor2', 'drwaqas', 'dr.waqas@hafizclinic.com'].includes(cleanId)) {
+    return ['doc-2', 'doc2', 'doctor2', 'drwaqas'];
+  }
+  if (['usr-1', 'usr1', 'patient1', 'mrn-84920', 'farooq@example.com'].includes(cleanId)) {
+    return ['usr-1', 'usr1', 'patient1', 'mrn-84920', 'MRN-84920'];
+  }
+  if (['usr-2', 'usr2', 'patient2', 'mrn-84921', 'kamran@example.com'].includes(cleanId)) {
+    return ['usr-2', 'usr2', 'patient2', 'mrn-84921', 'MRN-84921'];
+  }
+  return [id, cleanId];
+};
 
 // GET /api/messages
 router.get('/', async (req: Request, res: Response) => {
@@ -41,47 +49,37 @@ router.get('/', async (req: Request, res: Response) => {
       list = [...inMemoryMessages];
     }
 
-    const u1 = String(userId || user1 || '');
-    const u2 = String(doctorId || user2 || '');
+    const u1 = String(userId || user1 || '').trim();
+    const u2 = String(doctorId || user2 || '').trim();
 
-    const getAliases = (id: string) => {
-      const arr = [id];
-      if (!id) return arr;
-      if (id === 'doc-1' || id === 'doctor-demo-1') {
-        arr.push('doc-1', 'doctor-demo-1');
-      }
-      if (id === 'usr-1' || id === 'patient-demo-1') {
-        arr.push('usr-1', 'patient-demo-1');
-      }
-      return Array.from(new Set(arr));
-    };
-
-    if (u1 && u2) {
+    if (u1 === 'admin-monitor' || (!u1 && !u2)) {
+      // Admin inspection view: return all clinic messages
+    } else if (u1 && u2) {
+      // Strict 1-to-1 conversation filtering
       const aliases1 = getAliases(u1);
       const aliases2 = getAliases(u2);
       list = list.filter((m) => {
-        const sId = String(m.senderId || '');
-        const rId = String(m.receiverId || '');
-        return (
-          (aliases1.includes(sId) && aliases2.includes(rId)) ||
-          (aliases2.includes(sId) && aliases1.includes(rId)) ||
-          (sId === u1 && rId === u2) ||
-          (sId === u2 && rId === u1)
-        );
+        const sId = String(m.senderId || '').trim();
+        const rId = String(m.receiverId || '').trim();
+        const match1to2 = aliases1.some((a) => a.toLowerCase() === sId.toLowerCase()) &&
+                          aliases2.some((b) => b.toLowerCase() === rId.toLowerCase());
+        const match2to1 = aliases2.some((b) => b.toLowerCase() === sId.toLowerCase()) &&
+                          aliases1.some((a) => a.toLowerCase() === rId.toLowerCase());
+        return match1to2 || match2to1;
       });
     } else if (u1) {
       const aliases = getAliases(u1);
       list = list.filter((m) => {
-        const sId = String(m.senderId || '');
-        const rId = String(m.receiverId || '');
-        return aliases.includes(sId) || aliases.includes(rId) || sId === u1 || rId === u1;
+        const sId = String(m.senderId || '').trim().toLowerCase();
+        const rId = String(m.receiverId || '').trim().toLowerCase();
+        return aliases.some((a) => a.toLowerCase() === sId || a.toLowerCase() === rId);
       });
     } else if (u2) {
       const aliases = getAliases(u2);
       list = list.filter((m) => {
-        const sId = String(m.senderId || '');
-        const rId = String(m.receiverId || '');
-        return aliases.includes(sId) || aliases.includes(rId) || sId === u2 || rId === u2;
+        const sId = String(m.senderId || '').trim().toLowerCase();
+        const rId = String(m.receiverId || '').trim().toLowerCase();
+        return aliases.some((a) => a.toLowerCase() === sId || a.toLowerCase() === rId);
       });
     }
 

@@ -32,10 +32,28 @@ import {
   Mic,
   ChevronRight,
   ChevronLeft,
-  DollarSign
+  DollarSign,
+  Receipt,
+  Share2,
+  ExternalLink,
+  ShoppingBag,
+  Eye,
+  Glasses,
+  RefreshCw,
+  Download,
 } from 'lucide-react';
-import { Appointment, Doctor } from '../types';
+import { Appointment, Doctor, MoneySlip, MoneySlipItem } from '../types';
 import { loginApi, getReportsApi, updateReportApi, getAppointmentsApi, updateAppointmentApi } from '../services/api';
+import {
+  createAutoInvoiceFromAppointment,
+  addItemToPatientInvoice,
+  referPatientToDoctor,
+  fetchSlipsApi,
+  saveSlipApi,
+  HOSPITAL_SERVICES_CATALOG,
+} from '../services/billingService';
+import { printInvoiceHtml, printPrescriptionHtml, downloadInvoicePdf, downloadPrescriptionPdf, printInvoicePdf } from '../utils/printInvoice';
+import { openWhatsAppNotification } from '../utils/notificationDispatcher';
 import { DoctorPatientChatView } from './DoctorPatientChatView';
 
 interface DoctorPortalProps {
@@ -60,8 +78,27 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
   const [rxNotes, setRxNotes] = useState('');
   const [rxPrecautions, setRxPrecautions] = useState('');
   const [savedPrescriptions, setSavedPrescriptions] = useState<
-    { id: string; patientName: string; date: string; content: string }[]
+    { id: string; patientName: string; date: string; content: string; prescriptionText?: string; rxNotes?: string; rxPrecautions?: string; doctorName?: string }[]
   >([]);
+  const [selectedRxForPrint, setSelectedRxForPrint] = useState<any>(null);
+
+  // Billing & Live Money Slip State
+  const [patientActiveSlip, setPatientActiveSlip] = useState<MoneySlip | null>(null);
+  const [selectedSlipForPrint, setSelectedSlipForPrint] = useState<MoneySlip | null>(null);
+  const [isAddingItem, setIsAddingItem] = useState(false);
+  const [customItemDesc, setCustomItemDesc] = useState('');
+  const [customItemCategory, setCustomItemCategory] = useState<any>('Medicine');
+  const [customItemPrice, setCustomItemPrice] = useState<number>(1500);
+  const [customItemQty, setCustomItemQty] = useState<number>(1);
+  const [catalogDeptFilter, setCatalogDeptFilter] = useState<string>('all');
+  const [catalogSearch, setCatalogSearch] = useState<string>('');
+
+  // Referral Modal State
+  const [referralModalApp, setReferralModalApp] = useState<Appointment | null>(null);
+  const [referralTargetDocId, setReferralTargetDocId] = useState<string>(doctors[1]?.id || doctors[0]?.id || 'doc-2');
+  const [referralReason, setReferralReason] = useState<string>('کمپیوٹرائزڈ آنکھوں کا معائنہ و عینک (Optical / Eye Vision Checkup)');
+  const [includeReferralFee, setIncludeReferralFee] = useState<boolean>(true);
+  const [isProcessingReferral, setIsProcessingReferral] = useState(false);
 
   // Doctor Auth State
   const [isDoctorAuth, setIsDoctorAuth] = useState(false);
@@ -76,14 +113,39 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
 
   // Search & Filter State in Queue
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'Pending' | 'Approved' | 'Completed' | 'Cancelled'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'Pending' | 'Approved' | 'Completed' | 'Cancelled' | 'Referred'>('all');
 
   // Doctor Availability Toggle
   const [isOPDActive, setIsOPDActive] = useState(true);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   useEffect(() => {
     setAppointmentsList(appointments);
   }, [appointments]);
+
+  // Load Patient Running Slip whenever selectedApp changes
+  useEffect(() => {
+    if (selectedApp) {
+      const tokenStr = selectedApp.tokenNumber ? String(selectedApp.tokenNumber) : undefined;
+      fetchSlipsApi({
+        phone: selectedApp.phone,
+        appointmentId: selectedApp.id,
+        tokenNumber: tokenStr,
+      })
+        .then((slips) => {
+          const match = slips.find(
+            (s) =>
+              (tokenStr && String(s.tokenNumber) === tokenStr) ||
+              s.appointmentId === selectedApp.id ||
+              (s.patientPhone && selectedApp.phone && s.patientPhone.replace(/\D/g, '') === selectedApp.phone.replace(/\D/g, ''))
+          );
+          setPatientActiveSlip(match || null);
+        })
+        .catch(() => {});
+    } else {
+      setPatientActiveSlip(null);
+    }
+  }, [selectedApp]);
 
   useEffect(() => {
     if (isDoctorAuth) {
@@ -109,6 +171,8 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
   }, [appointmentsList, selectedApp]);
 
   const handleUpdateStatus = async (appId: string, newStatus: 'Approved' | 'Cancelled' | 'Completed') => {
+    const targetApp = appointmentsList.find((a) => a.id === appId || (a as any)._id === appId);
+
     setAppointmentsList((prev) =>
       prev.map((a) => {
         if (a.id === appId || (a as any)._id === appId) {
@@ -124,8 +188,97 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
 
     try {
       await updateAppointmentApi(appId, { status: newStatus });
+      if (newStatus === 'Approved' && targetApp) {
+        // Automatic invoice generation with doctor's checkup fee
+        const generatedSlip = await createAutoInvoiceFromAppointment(targetApp, doctors);
+        setPatientActiveSlip(generatedSlip);
+      }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  // Quick Add Pre-set Item or Custom Item to Patient's Invoice
+  const handleAddBillingItem = async (item: {
+    description: string;
+    category: any;
+    quantity: number;
+    unitPrice: number;
+    department?: string;
+    servedBy?: string;
+  }) => {
+    if (!selectedApp) {
+      alert(isUrdu ? 'برائے مہربانی پہلے او پی ڈی فہرست سے مریض منتخب کریں۔' : 'Please select a patient first.');
+      return;
+    }
+
+    try {
+      setIsAddingItem(true);
+      const docName = currentDoctor?.fullName || (isUrdu ? 'ڈاکٹر زیشان چوہدری' : 'Dr. Zeeshan Chaudhry');
+      const deptName = item.department || (currentDoctor?.department || 'OPD / Consultation');
+      const identifier = selectedApp.tokenNumber ? String(selectedApp.tokenNumber) : (selectedApp.phone || selectedApp.id);
+      const updatedSlip = await addItemToPatientInvoice(
+        identifier,
+        selectedApp.patientName,
+        docName,
+        {
+          ...item,
+          department: deptName,
+          servedBy: item.servedBy || docName,
+        }
+      );
+      setPatientActiveSlip(updatedSlip);
+      setCustomItemDesc('');
+      setCustomItemPrice(1500);
+      setCustomItemQty(1);
+    } catch (err) {
+      alert('Error updating patient invoice.');
+    } finally {
+      setIsAddingItem(false);
+    }
+  };
+
+  // Refer Patient to Another Doctor
+  const handleExecuteReferral = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!referralModalApp) return;
+
+    const targetDoc = doctors.find((d) => d.id === referralTargetDocId) || doctors[0];
+    if (!targetDoc) return;
+
+    try {
+      setIsProcessingReferral(true);
+      const fromDocName = currentDoctor?.fullName || (isUrdu ? 'ڈاکٹر زیشان چوہدری' : 'Dr. Zeeshan Chaudhry');
+      const { updatedAppointment, slip } = await referPatientToDoctor({
+        appointment: referralModalApp,
+        fromDoctorName: fromDocName,
+        toDoctor: targetDoc,
+        referralReason,
+        includeReferralFee,
+      });
+
+      // Update local queue
+      setAppointmentsList((prev) =>
+        prev.map((a) => (a.id === referralModalApp.id ? updatedAppointment : a))
+      );
+      if (selectedApp?.id === referralModalApp.id) {
+        setSelectedApp(updatedAppointment);
+        setPatientActiveSlip(slip);
+      }
+
+      await updateAppointmentApi(referralModalApp.id, updatedAppointment);
+
+      alert(
+        isUrdu
+          ? `مریض ${referralModalApp.patientName} کو کامیابی سے ${targetDoc.nameUrdu} کو ریفر کر دیا گیا ہے اور بل خودکار اپ ڈیٹ ہو گیا ہے۔`
+          : `Patient referred successfully to ${targetDoc.nameEnglish}. Invoice updated automatically.`
+      );
+
+      setReferralModalApp(null);
+    } catch (err) {
+      alert('Error processing patient referral.');
+    } finally {
+      setIsProcessingReferral(false);
     }
   };
 
@@ -177,7 +330,29 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
     try {
       const res = await loginApi(username, password, 'doctor');
       if (res.success) {
-        setCurrentDoctor(res.user);
+        let docUser = res.user;
+        const uLower = (username || '').toLowerCase();
+        if (
+          uLower === 'doctor2' ||
+          uLower === 'drwaqas' ||
+          docUser.id === 'doc-2' ||
+          docUser.email?.includes('waqas') ||
+          docUser.name?.toLowerCase().includes('waqas') ||
+          docUser.name?.includes('وقاص')
+        ) {
+          docUser = {
+            ...docUser,
+            id: 'doc-2',
+            name: docUser.name || (isUrdu ? 'ڈاکٹر وقاص صغیر چوہدری' : 'Dr. Waqas Sagheer'),
+          };
+        } else {
+          docUser = {
+            ...docUser,
+            id: 'doc-1',
+            name: docUser.name || (isUrdu ? 'ڈاکٹر زیشان چوہدری' : 'Dr. Zeeshan Chaudhry'),
+          };
+        }
+        setCurrentDoctor(docUser);
         setIsDoctorAuth(true);
       } else {
         setAuthError(res.message || 'Login failed. Please check credentials.');
@@ -194,20 +369,109 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
       alert(isUrdu ? 'برائے مہربانی ادویات یا ہدایات تحریر کریں۔' : 'Please enter medicine or instruction text.');
       return;
     }
+    const docName = currentDoctor?.fullName || (isUrdu ? 'ڈاکٹر زیشان چوہدری' : 'Dr. Zeeshan Chaudhry');
     const newRx = {
       id: `Rx-${Date.now()}`,
       patientName: selectedApp?.patientName || 'General OPD Patient',
       date: new Date().toLocaleDateString(),
       content: `${prescriptionText}\n\n${rxNotes ? `ملاحظات: ${rxNotes}\n` : ''}${rxPrecautions ? `پرہیز: ${rxPrecautions}` : ''}`,
+      prescriptionText,
+      rxNotes,
+      rxPrecautions,
+      doctorName: docName,
     };
     setSavedPrescriptions([newRx, ...savedPrescriptions]);
     if (selectedApp) {
       handleUpdateStatus(selectedApp.id || (selectedApp as any)._id, 'Completed');
     }
-    alert(isUrdu ? 'الیکٹرانک نسخہ کامیابی سے پرنٹ و محفوظ کر لیا گیا ہے۔' : 'Electronic Prescription saved & printed successfully.');
+    setSelectedRxForPrint(newRx);
     setPrescriptionText('');
     setRxNotes('');
     setRxPrecautions('');
+  };
+
+  // 1-Click Push Prescribed Medicines to Pharmacy Billing Queue
+  const handlePushRxToBilling = async () => {
+    if (!selectedApp) {
+      alert(isUrdu ? 'برائے مہربانی او پی ڈی قطار سے پہلے مریض منتخب کریں۔' : 'Please select an active patient first.');
+      return;
+    }
+    if (!prescriptionText.trim()) {
+      alert(isUrdu ? 'برائے مہربانی پہلے تجویز کردہ ادویات تحریر کریں۔' : 'Please enter prescribed medicines first.');
+      return;
+    }
+
+    try {
+      setIsAddingItem(true);
+      const lines = prescriptionText
+        .split('\n')
+        .map((l) => l.replace(/^[\d.-]+\s*/, '').trim())
+        .filter((l) => l.length > 2);
+
+      const docName = currentDoctor?.fullName || (isUrdu ? 'ڈاکٹر زیشان چوہدری' : 'Dr. Zeeshan Chaudhry');
+      const identifier = selectedApp.tokenNumber ? String(selectedApp.tokenNumber) : (selectedApp.phone || selectedApp.id);
+
+      let updated = patientActiveSlip;
+      if (lines.length === 0) {
+        // Add single prescription bundle
+        updated = await addItemToPatientInvoice(
+          identifier,
+          selectedApp.patientName,
+          docName,
+          {
+            description: `تجویز کردہ ادویات کورس (${selectedApp.problem || 'او پی ڈی'})`,
+            category: 'Medicine',
+            quantity: 1,
+            unitPrice: 1500,
+            department: 'Pharmacy & Medicines',
+            servedBy: docName,
+          }
+        );
+      } else {
+        for (const line of lines) {
+          const cleanDesc = line.split('—')[0].split('-')[0].trim();
+          updated = await addItemToPatientInvoice(
+            identifier,
+            selectedApp.patientName,
+            docName,
+            {
+              description: cleanDesc,
+              category: 'Medicine',
+              quantity: 1,
+              unitPrice: 850,
+              department: 'Pharmacy & Medicines',
+              servedBy: docName,
+            }
+          );
+        }
+      }
+
+      setPatientActiveSlip(updated);
+      alert(
+        isUrdu
+          ? `✅ نسخہ کی ادویات کامیابی سے مریض ${selectedApp.patientName} کی انوائس میں شامل کر دی گئیں اور فارمیسی کاؤنٹر پر بھیج دی گئیں۔`
+          : `Rx medicines pushed to active invoice (${updated.slipNo}) and pharmacy queue.`
+      );
+    } catch (e) {
+      alert('Error pushing medicines to invoice.');
+    } finally {
+      setIsAddingItem(false);
+    }
+  };
+
+  // Send Direct WhatsApp Prescription & Advice to Patient
+  const handleSendWhatsAppRx = () => {
+    if (!selectedApp) return;
+    const docName = currentDoctor?.fullName || (isUrdu ? 'ڈاکٹر زیشان چوہدری' : 'Dr. Zeeshan Chaudhry');
+    const fullAdvisory = `${prescriptionText ? `💊 ادویات:\n${prescriptionText}\n\n` : ''}${rxNotes ? `📝 طبی ہدایات: ${rxNotes}\n` : ''}${rxPrecautions ? `⚠️ پرہیز: ${rxPrecautions}` : ''}`;
+
+    openWhatsAppNotification({
+      type: 'rx_advisory',
+      recipientPhone: selectedApp.phone,
+      recipientName: selectedApp.patientName,
+      doctorName: docName,
+      problemOrNotes: fullAdvisory || 'تمام ادویات وقت پر لیں اور پرہیز کا خیال رکھیں۔',
+    }, isUrdu ? 'urdu' : 'english');
   };
 
   const handleReviewReport = async (repId: string) => {
@@ -234,12 +498,24 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
 
   // Queue Filters
   const filteredQueue = appointmentsList.filter((app) => {
+    const q = searchQuery.toLowerCase().trim();
     const matchesSearch =
-      (app.patientName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (app.phone || '').includes(searchQuery) ||
-      (app.problem || '').toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || app.status === statusFilter;
-    return matchesSearch && matchesStatus;
+      !q ||
+      (app.patientName || '').toLowerCase().includes(q) ||
+      (app.phone || '').includes(q) ||
+      (app.problem || '').toLowerCase().includes(q) ||
+      (app.tokenNumber || '').toLowerCase().includes(q) ||
+      (app.referralToken || '').toLowerCase().includes(q) ||
+      (app.referralService || '').toLowerCase().includes(q) ||
+      (app.id || '').toLowerCase().includes(q);
+
+    if (!matchesSearch) return false;
+
+    if (statusFilter === 'all') return true;
+    if (statusFilter === 'Referred') {
+      return app.referralStatus === 'Referred' || !!app.referralToken;
+    }
+    return app.status === statusFilter;
   });
 
   // Stats calculation
@@ -797,7 +1073,7 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder={isUrdu ? 'مریض کا نام، فون نمبر یا بیماری تلاش کریں...' : 'Search by patient name, phone, or condition...'}
+                    placeholder={isUrdu ? 'مریض کا نام، فون، ٹوکن یا ریفرل ٹوکن تلاش کریں...' : 'Search by name, phone, Token #, or Referral Token...'}
                     className="w-full bg-slate-50 border border-slate-300 pl-9 pr-3 py-2 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-emerald-500"
                   />
                   {searchQuery && (
@@ -809,7 +1085,7 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
 
                 {/* Status Pills */}
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-[11px] font-bold">
-                  {(['all', 'Pending', 'Approved', 'Completed', 'Cancelled'] as const).map((st) => (
+                  {(['all', 'Pending', 'Approved', 'Referred', 'Completed', 'Cancelled'] as const).map((st) => (
                     <button
                       key={st}
                       onClick={() => setStatusFilter(st)}
@@ -831,6 +1107,10 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                         ? isUrdu
                           ? 'منظور'
                           : 'Approved'
+                        : st === 'Referred'
+                        ? isUrdu
+                          ? '🔄 ریفرڈ'
+                          : '🔄 Referred'
                         : st === 'Completed'
                         ? isUrdu
                           ? 'مکمل'
@@ -853,6 +1133,7 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                   filteredQueue.map((app, idx) => {
                     const itemKey = app.id || (app as any)._id || `app-${idx}`;
                     const isSelected = selectedApp?.id === app.id || (selectedApp && (selectedApp as any)._id === (app as any)._id);
+                    const tokenNum = app.tokenNumber || (app as any).token || (app.id && app.id.startsWith('APP-') ? app.id.replace('APP-', 'TK-') : `TK-${idx + 101}`);
 
                     return (
                       <div
@@ -865,7 +1146,12 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                         }`}
                       >
                         <div className="flex items-center justify-between font-bold text-slate-900 gap-2">
-                          <span className="truncate text-sm">{app.patientName}</span>
+                          <div className="truncate">
+                            <span className="text-sm block truncate">{app.patientName}</span>
+                            <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-1.5 py-0.2 rounded text-[10px] font-mono inline-block font-bold">
+                              🎫 {tokenNum}
+                            </span>
+                          </div>
                           <span
                             className={`text-[10px] px-2 py-0.5 rounded-md font-mono shrink-0 font-bold ${
                               app.status === 'Approved'
@@ -881,6 +1167,13 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                           </span>
                         </div>
 
+                        {app.referralToken && (
+                          <div className="bg-amber-100/90 border border-amber-300 text-amber-950 p-1.5 rounded-lg text-[10px] font-bold flex items-center justify-between">
+                            <span>🔄 {isUrdu ? 'ریفرل ٹوکن:' : 'Ref Token:'} {app.referralToken}</span>
+                            <span className="text-amber-800 font-medium truncate max-w-[120px]">{app.referralService || app.doctorName}</span>
+                          </div>
+                        )}
+
                         <div className="text-[11px] text-slate-600 space-y-0.5">
                           <div>
                             <strong>{isUrdu ? 'وقت / سلاٹ:' : 'Time:'}</strong> {app.date || 'Today'} ({app.timeSlot})
@@ -894,11 +1187,11 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                         </div>
 
                         {/* Quick Status Handler */}
-                        <div className="flex items-center gap-1.5 pt-1 border-t border-slate-200/80" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/80" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
                             onClick={() => handleUpdateStatus(app.id || (app as any)._id, 'Approved')}
-                            className={`flex-1 py-1 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
+                            className={`flex-1 min-w-[70px] py-1 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
                               app.status === 'Approved'
                                 ? 'bg-emerald-700 text-white shadow-xs'
                                 : 'bg-emerald-100 hover:bg-emerald-600 hover:text-white text-emerald-900 border border-emerald-300'
@@ -910,8 +1203,18 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
 
                           <button
                             type="button"
+                            onClick={() => setReferralModalApp(app)}
+                            className="py-1 px-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 bg-amber-100 hover:bg-amber-600 hover:text-white text-amber-900 border border-amber-300 transition-all cursor-pointer"
+                            title={isUrdu ? 'دیگر معالج کو ریفر کریں' : 'Refer Patient to Another Doctor'}
+                          >
+                            <Share2 className="w-3 h-3" />
+                            <span>{isUrdu ? 'ریفر' : 'Refer'}</span>
+                          </button>
+
+                          <button
+                            type="button"
                             onClick={() => handleUpdateStatus(app.id || (app as any)._id, 'Completed')}
-                            className={`flex-1 py-1 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
+                            className={`flex-1 min-w-[70px] py-1 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
                               app.status === 'Completed'
                                 ? 'bg-blue-700 text-white shadow-xs'
                                 : 'bg-blue-100 hover:bg-blue-600 hover:text-white text-blue-900 border border-blue-300'
@@ -923,7 +1226,7 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                           <button
                             type="button"
                             onClick={() => handleUpdateStatus(app.id || (app as any)._id, 'Cancelled')}
-                            className={`flex-1 py-1 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
+                            className={`py-1 px-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
                               app.status === 'Cancelled'
                                 ? 'bg-rose-700 text-white shadow-xs'
                                 : 'bg-rose-100 hover:bg-rose-600 hover:text-white text-rose-900 border border-rose-300'
@@ -939,40 +1242,356 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
               </div>
             </div>
 
-            {/* Right Col: Electronic Prescription Writer */}
+            {/* Right Col: Electronic Prescription Writer & Live Billing Workspace */}
             <div className="lg:col-span-2 bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-sm space-y-5">
-              <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+              <div className="flex flex-wrap justify-between items-center gap-2 border-b border-slate-200 pb-3">
                 <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
                   <FilePlus className="w-5 h-5 text-emerald-600" />
-                  <span>{isUrdu ? 'الیکٹرانک میڈیکل نسخہ تحریر کریں (Electronic Rx Writer)' : 'Electronic Prescription Writer'}</span>
+                  <span>{isUrdu ? 'الیکٹرانک نسخہ و مریض بلنگ (EMR & Live Billing)' : 'Electronic Rx & Billing Workspace'}</span>
                 </h3>
                 {selectedApp && (
-                  <span className="text-xs bg-emerald-100 text-emerald-900 px-3 py-1 rounded-full border border-emerald-300 font-bold">
-                    {isUrdu ? 'مریض:' : 'Patient:'} {selectedApp.patientName} ({selectedApp.phone})
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setReferralModalApp(selectedApp)}
+                      className="text-xs bg-amber-50 hover:bg-amber-100 text-amber-900 px-3 py-1.5 rounded-xl border border-amber-300 font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Share2 className="w-3.5 h-3.5 text-amber-700" />
+                      <span>{isUrdu ? 'دیگر ڈاکٹر کو ریفر کریں' : 'Refer to Doctor'}</span>
+                    </button>
+                    <span className="text-xs bg-emerald-100 text-emerald-900 px-3 py-1.5 rounded-xl border border-emerald-300 font-bold">
+                      {isUrdu ? 'مریض:' : 'Patient:'} {selectedApp.patientName}
+                    </span>
+                  </div>
                 )}
               </div>
 
               {selectedApp ? (
-                <div className="space-y-4 text-xs font-semibold">
+                <div className="space-y-5 text-xs font-semibold">
                   {/* Patient Profile Header Card */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-slate-800">
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">{isUrdu ? 'مریض کا نام' : 'Patient Name'}</span>
-                      <strong className="text-slate-900 text-sm">{selectedApp.patientName}</strong>
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200 text-slate-800">
+                      <div>
+                        <span className="text-slate-500 block text-[10px]">{isUrdu ? 'مریض کا نام و ٹوکن' : 'Patient Name & Token'}</span>
+                        <strong className="text-slate-900 text-sm block">{selectedApp.patientName}</strong>
+                        <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded text-[10px] font-mono inline-block mt-0.5 font-bold">
+                          🎫 {selectedApp.tokenNumber || (selectedApp.id && selectedApp.id.startsWith('APP-') ? selectedApp.id.replace('APP-', 'TK-') : 'TK-101')}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[10px]">{isUrdu ? 'شہر / فون' : 'City / Phone'}</span>
+                        <strong className="text-slate-900">{selectedApp.city || 'Lahore'} | {selectedApp.phone}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[10px]">{isUrdu ? 'موقع و تاریخ' : 'Slot Date'}</span>
+                        <strong className="text-slate-900">{selectedApp.date || 'Today'} ({selectedApp.timeSlot})</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 block text-[10px]">{isUrdu ? 'بیماری / معائنہ فیس' : 'Complaint / Doctor Fee'}</span>
+                        <strong className="text-emerald-700 font-mono">
+                          {selectedApp.problem} — Rs. {selectedApp.doctorFee || 1500}
+                        </strong>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">{isUrdu ? 'شہر / پتہ' : 'City / Location'}</span>
-                      <strong className="text-slate-900">{selectedApp.city || 'Lahore'}</strong>
+
+                    {selectedApp.referralToken && (
+                      <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3 flex flex-wrap justify-between items-center gap-2 text-amber-950">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1.5 bg-amber-200 text-amber-900 rounded-lg">
+                            <Share2 className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <span className="font-bold block text-xs">
+                              {isUrdu ? 'ریفرل ٹوکن:' : 'Official Referral Token:'}{' '}
+                              <strong className="font-mono bg-amber-200 text-amber-950 px-2 py-0.5 rounded ml-1">
+                                {selectedApp.referralToken}
+                              </strong>
+                            </span>
+                            <span className="text-[11px] text-amber-800">
+                              {isUrdu ? 'ریفر کردہ معالج / سروس:' : 'Referred to / Service:'}{' '}
+                              <strong>{selectedApp.referralService || selectedApp.doctorName}</strong>
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-[11px] bg-amber-200/80 px-2.5 py-1 rounded-xl font-bold">
+                          {isUrdu ? 'ریفرل فیس انوائس میں شامل ہے' : 'Referral fee linked to invoice'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ================= LIVE PATIENT INVOICE & BILLING SECTION ================= */}
+                  <div className="bg-emerald-950/5 border border-emerald-300/80 rounded-2xl p-4 space-y-4">
+                    <div className="flex flex-wrap justify-between items-center gap-2 border-b border-emerald-200/80 pb-3">
+                      <div className="flex items-center gap-2">
+                        <Receipt className="w-5 h-5 text-emerald-700" />
+                        <div>
+                          <span className="font-black text-emerald-950 text-sm block">
+                            {isUrdu ? 'مریض کی خودکار انوائس و اشیاء کا بل (Active Patient Invoice & Money Slip)' : 'Live Patient Invoice & Charges'}
+                          </span>
+                          <span className="text-[11px] text-emerald-800 font-normal">
+                            {patientActiveSlip
+                              ? `${isUrdu ? 'سلپ نمبر:' : 'Slip #'}: ${patientActiveSlip.slipNumber} | ${isUrdu ? 'حالت:' : 'Status'}: ${patientActiveSlip.paymentStatus}`
+                              : isUrdu
+                              ? 'اپائنٹمنٹ منظور ہونے پر خودکار سلپ بن جائے گی یا نیچے اشیاء شامل کریں۔'
+                              : 'Automatic invoice generates on approval or add items below.'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {patientActiveSlip && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSlipForPrint(patientActiveSlip)}
+                            className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-transform active:scale-95 cursor-pointer"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>{isUrdu ? 'رسید / سلپ پرنٹ کریں' : 'Print Invoice'}</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (selectedApp) {
+                              fetchSlipsApi({ phone: selectedApp.phone, appointmentId: selectedApp.id }).then((slips) => {
+                                const match = slips.find((s) => s.appointmentId === selectedApp.id || (s.patientPhone && selectedApp.phone && s.patientPhone.replace(/\D/g, '') === selectedApp.phone.replace(/\D/g, '')));
+                                setPatientActiveSlip(match || null);
+                              });
+                            }
+                          }}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold p-1.5 rounded-xl border border-slate-300"
+                          title="Refresh Invoice"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">{isUrdu ? 'موقع و تاریخ' : 'Slot Date'}</span>
-                      <strong className="text-slate-900">{selectedApp.date || 'Today'} ({selectedApp.timeSlot})</strong>
+
+                    {/* Quick Add Hospital Catalog Services & Charges */}
+                    <div className="space-y-2.5 bg-white p-3.5 rounded-2xl border border-emerald-100 shadow-xs">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                        <label className="text-[11px] font-bold text-slate-800 flex items-center gap-1.5">
+                          <ShoppingBag className="w-4 h-4 text-emerald-700" />
+                          <span>{isUrdu ? 'ہسپتال سروسز کیٹلاگ (1-کلک بل میں شامل کریں):' : 'Hospital Services Catalog (1-Click Add to Token Invoice):'}</span>
+                        </label>
+                        <div className="relative w-full sm:w-56">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+                          <input
+                            type="text"
+                            value={catalogSearch}
+                            onChange={(e) => setCatalogSearch(e.target.value)}
+                            placeholder={isUrdu ? 'سروس یا ٹیسٹ تلاش کریں (X-Ray, CBC...)' : 'Search services (X-Ray, Scan, CBC...)'}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-8 pr-2.5 py-1 text-[11px] font-medium text-slate-900 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Department Filter Pills */}
+                      <div className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar text-[10px] font-bold">
+                        {[
+                          { id: 'all', label: isUrdu ? 'تمام شعبہ جات' : 'All Departments' },
+                          { id: 'Radiology / X-Ray & Scans', label: isUrdu ? '📷 ریڈیالوجی و ایکسرے' : '📷 Radiology & X-Ray' },
+                          { id: 'Clinical Laboratory', label: isUrdu ? '🔬 لیبارٹری ٹیسٹ' : '🔬 Clinical Lab' },
+                          { id: 'Hijama & Cupping Therapy', label: isUrdu ? '🩸 حجامہ تھراپی' : '🩸 Hijama Therapy' },
+                          { id: 'Physiotherapy & Spine Care', label: isUrdu ? '⚡ فزیوتھراپی' : '⚡ Physiotherapy' },
+                          { id: 'Ophthalmology & Optical Care', label: isUrdu ? '👓 آئی کیئر و عینک' : '👓 Eye Care & Optical' },
+                          { id: 'Pharmacy & Medicines', label: isUrdu ? '💊 فارمیسی ادویات' : '💊 Pharmacy Meds' },
+                          { id: 'General OPD & Consultation', label: isUrdu ? '🩺 چیک اپ و فیس' : '🩺 OPD Consultation' },
+                        ].map((dept) => (
+                          <button
+                            key={dept.id}
+                            type="button"
+                            onClick={() => setCatalogDeptFilter(dept.id)}
+                            className={`px-2.5 py-1 rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+                              catalogDeptFilter === dept.id
+                                ? 'bg-emerald-800 text-white shadow-xs'
+                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                            }`}
+                          >
+                            {dept.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Catalog Items Grid */}
+                      <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto pr-1">
+                        {HOSPITAL_SERVICES_CATALOG
+                          .filter((item) => {
+                            const matchDept = catalogDeptFilter === 'all' || item.department === catalogDeptFilter;
+                            const matchSearch =
+                              !catalogSearch ||
+                              item.nameEnglish.toLowerCase().includes(catalogSearch.toLowerCase()) ||
+                              item.nameUrdu.includes(catalogSearch) ||
+                              item.category.toLowerCase().includes(catalogSearch.toLowerCase()) ||
+                              item.department.toLowerCase().includes(catalogSearch.toLowerCase());
+                            return matchDept && matchSearch;
+                          })
+                          .map((item) => (
+                            <button
+                              key={item.id}
+                              type="button"
+                              disabled={isAddingItem}
+                              onClick={() =>
+                                handleAddBillingItem({
+                                  description: isUrdu ? item.nameUrdu : item.nameEnglish,
+                                  category: item.category,
+                                  quantity: 1,
+                                  unitPrice: item.unitPrice,
+                                  department: item.department,
+                                  servedBy: currentDoctor?.fullName || (isUrdu ? 'ڈاکٹر زیشان چوہدری' : 'Dr. Zeeshan Chaudhry'),
+                                })
+                              }
+                              className="bg-slate-50 hover:bg-emerald-700 hover:text-white text-slate-800 border border-slate-200 hover:border-emerald-700 px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer group"
+                              title={`${item.department} — Rs. ${item.unitPrice}`}
+                            >
+                              <span>{isUrdu ? item.nameUrdu : item.nameEnglish}</span>
+                              <span className="bg-emerald-100 text-emerald-900 group-hover:bg-emerald-800 group-hover:text-emerald-100 px-1.5 py-0.5 rounded text-[10px] font-mono">
+                                Rs. {item.unitPrice.toLocaleString()}
+                              </span>
+                            </button>
+                          ))}
+                      </div>
                     </div>
-                    <div>
-                      <span className="text-slate-500 block text-[10px]">{isUrdu ? 'بیماری / شکایت' : 'Chief Complaint'}</span>
-                      <strong className="text-emerald-700">{selectedApp.problem}</strong>
+
+                    {/* Custom Item Form */}
+                    <div className="bg-white p-3 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-5 gap-2 items-end">
+                      <div className="sm:col-span-2">
+                        <label className="block text-[10px] text-slate-500 font-bold mb-1">
+                          {isUrdu ? 'دوا / چشمہ / سروس کی تفصیل' : 'Item / Medicine / Optical Description'}
+                        </label>
+                        <input
+                          type="text"
+                          placeholder={isUrdu ? 'مثلاً: ٹیبلٹ، چشمہ فریم، ٹیسٹ...' : 'e.g. Optical Frame, Medicine, Scan...'}
+                          value={customItemDesc}
+                          onChange={(e) => setCustomItemDesc(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-bold text-slate-900"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] text-slate-500 font-bold mb-1">
+                          {isUrdu ? 'کیٹگری' : 'Category'}
+                        </label>
+                        <select
+                          value={customItemCategory}
+                          onChange={(e) => setCustomItemCategory(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs text-slate-900 font-medium"
+                        >
+                          <option value="Medicine">Medicine (ادویات)</option>
+                          <option value="Eye Care / Glasses">Eye Care / Glasses (آنکھوں کا چشمہ)</option>
+                          <option value="Physiotherapy">Physiotherapy (فزیوتھراپی)</option>
+                          <option value="Lab Test / Scan">Lab Test / Scan (ٹیسٹ)</option>
+                          <option value="Custom">Other Service (دیگر)</option>
+                        </select>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <div>
+                          <label className="block text-[10px] text-slate-500 font-bold mb-1">
+                            {isUrdu ? 'تعداد' : 'Qty'}
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={customItemQty}
+                            onChange={(e) => setCustomItemQty(Number(e.target.value) || 1)}
+                            className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-slate-900"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-500 font-bold mb-1">
+                            {isUrdu ? 'قیمت (Rs)' : 'Price'}
+                          </label>
+                          <input
+                            type="number"
+                            value={customItemPrice}
+                            onChange={(e) => setCustomItemPrice(Number(e.target.value) || 0)}
+                            className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-mono font-bold text-slate-900"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <button
+                          type="button"
+                          disabled={!customItemDesc || isAddingItem}
+                          onClick={() =>
+                            handleAddBillingItem({
+                              description: customItemDesc,
+                              category: customItemCategory,
+                              quantity: customItemQty,
+                              unitPrice: customItemPrice,
+                            })
+                          }
+                          className="w-full bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold py-2 px-3 rounded-lg text-xs flex items-center justify-center gap-1 shadow-sm transition-colors cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>{isUrdu ? 'بل میں ڈالیں' : 'Add Item'}</span>
+                        </button>
+                      </div>
                     </div>
+
+                    {/* Active Invoice Items Table & Totals */}
+                    {patientActiveSlip && (
+                      <div className="bg-white rounded-xl border border-emerald-200 overflow-hidden text-xs">
+                        <div className="p-2.5 bg-emerald-50/80 border-b border-emerald-200 font-bold text-emerald-950 flex justify-between items-center">
+                          <span>{isUrdu ? 'انوائس کی تمام تفاصیل (Itemized Charges Breakdown):' : 'Itemized Charges in Current Invoice:'}</span>
+                          <span className="font-mono text-[11px] bg-emerald-200/80 text-emerald-900 px-2 py-0.5 rounded-md">
+                            {patientActiveSlip.items.length} {isUrdu ? 'اشیاء' : 'Items'}
+                          </span>
+                        </div>
+                        <div className="overflow-x-auto max-h-48">
+                          <table className="w-full text-left">
+                            <thead>
+                              <tr className="border-b border-slate-200 text-slate-500 bg-slate-50 text-[10px] uppercase font-bold">
+                                <th className="p-2">#</th>
+                                <th className="p-2">{isUrdu ? 'تفصیل' : 'Description'}</th>
+                                <th className="p-2">{isUrdu ? 'کیٹگری' : 'Category'}</th>
+                                <th className="p-2">{isUrdu ? 'تعداد' : 'Qty'}</th>
+                                <th className="p-2">{isUrdu ? 'ریٹ' : 'Unit'}</th>
+                                <th className="p-2">{isUrdu ? 'ٹوٹل' : 'Total'}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {patientActiveSlip.items.map((it, idx) => (
+                                <tr key={idx} className="hover:bg-slate-50/80 font-medium">
+                                  <td className="p-2 font-mono text-slate-400">{idx + 1}</td>
+                                  <td className="p-2 font-bold text-slate-900">{it.description}</td>
+                                  <td className="p-2">
+                                    <span className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded text-[10px] font-semibold">
+                                      {it.category}
+                                    </span>
+                                  </td>
+                                  <td className="p-2 font-mono">{it.quantity}</td>
+                                  <td className="p-2 font-mono">Rs. {(it.unitPrice ?? 0).toLocaleString()}</td>
+                                  <td className="p-2 font-mono font-bold text-emerald-700">Rs. {(it.totalPrice ?? (it as any).total ?? ((it.unitPrice || 0) * (it.quantity || 1))).toLocaleString()}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Totals Bar */}
+                        <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-wrap justify-between items-center gap-3 text-xs font-mono font-bold">
+                          <div className="text-slate-600">
+                            {isUrdu ? 'سب ٹوٹل:' : 'Subtotal:'} <span className="text-slate-900">Rs. {(patientActiveSlip.subtotal ?? 0).toLocaleString()}</span>
+                            {((patientActiveSlip as any).discountAmount || patientActiveSlip.discount || 0) > 0 && (
+                              <span className="text-rose-600 ml-2">(-{((patientActiveSlip as any).discountAmount || patientActiveSlip.discount || 0).toLocaleString()})</span>
+                            )}
+                          </div>
+                          <div className="text-emerald-800 text-sm">
+                            {isUrdu ? 'کل رقم:' : 'Grand Total:'} <span>Rs. {(patientActiveSlip.totalAmount ?? 0).toLocaleString()}</span>
+                          </div>
+                          <div className="text-teal-700">
+                            {isUrdu ? 'وصول شدہ:' : 'Paid:'} <span>Rs. {(patientActiveSlip.paidAmount ?? 0).toLocaleString()}</span>
+                          </div>
+                          <div className="text-amber-800">
+                            {isUrdu ? 'بقایا:' : 'Balance:'} <span>Rs. {(patientActiveSlip.balanceAmount ?? 0).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Medicines Prescription Field */}
@@ -1018,22 +1637,49 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                     </div>
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                    <button
-                      onClick={handleSaveRx}
-                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-98 cursor-pointer"
-                    >
-                      <Printer className="w-4 h-4" />
-                      <span>{isUrdu ? 'نسخہ الیکٹرانک محفوظ کریں و پرنٹ کریں' : 'Save & Print Electronic Rx'}</span>
-                    </button>
-                    <button
-                      onClick={() => setDocPage('chat')}
-                      className="bg-slate-800 hover:bg-slate-900 text-white font-bold py-3.5 px-5 rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-                    >
-                      <MessageSquare className="w-4 h-4 text-emerald-400" />
-                      <span>{isUrdu ? 'مریض کو ڈائریکٹ میسج کریں' : 'Send Direct Message'}</span>
-                    </button>
+                  {/* Actions & Automation Hub */}
+                  <div className="space-y-2 pt-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSaveRx}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-3 rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-98 cursor-pointer"
+                      >
+                        <Printer className="w-4 h-4" />
+                        <span>{isUrdu ? 'نسخہ محفوظ و پرنٹ کریں' : 'Save & Print Rx'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handlePushRxToBilling}
+                        disabled={isAddingItem}
+                        className="bg-amber-600 hover:bg-amber-700 text-white font-bold py-3 px-3 rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-98 cursor-pointer"
+                        title="Directly add prescribed medicines to patient billing slip & notify pharmacy POS"
+                      >
+                        <ShoppingBag className="w-4 h-4" />
+                        <span>{isUrdu ? '🚀 1-کلک بلنگ و فارمیسی بھیجیں' : 'Push Rx to Pharmacy Billing'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleSendWhatsAppRx}
+                        className="bg-teal-700 hover:bg-teal-800 text-white font-bold py-3 px-3 rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-md transition-all active:scale-98 cursor-pointer"
+                      >
+                        <Send className="w-4 h-4" />
+                        <span>{isUrdu ? 'واٹس ایپ پر نسخہ بھیجیں' : 'Send Rx to WhatsApp'}</span>
+                      </button>
+                    </div>
+
+                    <div className="flex justify-end pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setDocPage('chat')}
+                        className="text-slate-600 hover:text-slate-900 font-bold text-xs flex items-center gap-1 underline"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>{isUrdu ? 'مریض سے ویڈیو و چیٹ مشاورت شروع کریں' : 'Start Video / Chat Consultation'}</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Saved Rx Log */}
@@ -1042,9 +1688,18 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                       <div className="font-bold text-slate-900 text-xs">{isUrdu ? 'جاری کردہ الیکٹرانک نسخہ جات کا لاگ:' : 'Saved Prescription Log:'}</div>
                       <div className="space-y-2 max-h-40 overflow-y-auto">
                         {savedPrescriptions.map((rx) => (
-                          <div key={rx.id} className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-slate-800 text-[11px] font-mono whitespace-pre-wrap">
-                            <div className="font-bold text-emerald-800 mb-1">{rx.patientName} — {rx.date}</div>
-                            {rx.content}
+                          <div key={rx.id} className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-slate-800 text-[11px] space-y-2">
+                            <div className="flex justify-between items-center font-mono">
+                              <span className="font-bold text-emerald-800">{rx.patientName} — {rx.date}</span>
+                              <button
+                                onClick={() => setSelectedRxForPrint(rx)}
+                                className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 shadow-xs transition-colors"
+                              >
+                                <Printer className="w-3 h-3" />
+                                <span>{isUrdu ? 'پرنٹ کریں' : 'Print Slip'}</span>
+                              </button>
+                            </div>
+                            <div className="whitespace-pre-wrap font-mono text-[10px] text-slate-700">{rx.content}</div>
                           </div>
                         ))}
                       </div>
@@ -1262,6 +1917,466 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
           </div>
         )}
       </main>
+
+      {/* ================= MODAL: DOCTOR PATIENT REFERRAL ================= */}
+      {referralModalApp && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl relative text-slate-900 border border-slate-200 text-xs">
+            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-amber-100 text-amber-900 rounded-xl">
+                  <Share2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-base">
+                    {isUrdu ? 'مریض کو دیگر معالج کو ریفر کریں' : 'Refer Patient to Another Doctor'}
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-semibold">
+                    {referralModalApp.patientName} ({referralModalApp.phone})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setReferralModalApp(null)}
+                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleExecuteReferral} className="space-y-4 font-semibold">
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-[11px] text-amber-900 leading-relaxed">
+                ℹ️ {isUrdu
+                  ? 'مریض کو دوبارہ نئی اپائنٹمنٹ لینے کی ضرورت نہیں ہوگی۔ وہ براہ راست منتخب معالج کے او پی ڈی رجسٹر میں شامل ہو جائے گا اور انوائس خودکار اپ ڈیٹ ہو جائے گی۔'
+                  : 'The patient will not need to book a new appointment. They will automatically be queued for the referred doctor with fees synced.'}
+              </div>
+
+              <div>
+                <label className="block text-slate-800 font-bold mb-1.5">
+                  {isUrdu ? 'جس معالج / سپیشلسٹ کو ریفر کرنا ہے:' : 'Select Target Doctor:'}
+                </label>
+                <select
+                  value={referralTargetDocId}
+                  onChange={(e) => setReferralTargetDocId(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs font-bold text-slate-900 focus:ring-2 focus:ring-emerald-500"
+                >
+                  {doctors.map((doc) => (
+                    <option key={doc.id} value={doc.id}>
+                      {isUrdu ? doc.nameUrdu : doc.nameEnglish} — {isUrdu ? doc.specializationUrdu : doc.specializationEnglish} (معائنہ فیس: Rs. {doc.checkupFee || 1500})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-800 font-bold mb-1.5">
+                  {isUrdu ? 'ریفرل کی وجہ / درکار معائنہ:' : 'Referral Reason / Required Treatment:'}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={referralReason}
+                  onChange={(e) => setReferralReason(e.target.value)}
+                  placeholder={isUrdu ? 'مثلاً: کمپیوٹرائزڈ آنکھوں کا معائنہ و عینک کی تیاری' : 'e.g. Computerized Eye Vision Checkup & Prescription'}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 font-bold"
+                />
+                {/* Quick Reason Tags */}
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {[
+                    isUrdu ? 'کمپیوٹرائزڈ آنکھوں کا معائنہ و عینک' : 'Optical Vision Test & Glasses',
+                    isUrdu ? 'ریڑھ کی ہڈی و مہروں کی فزیو تھراپی' : 'Spine Physiotherapy & Laser',
+                    isUrdu ? 'بائیو کوانٹم باڈی اسکین ٹیسٹ' : 'Bio Quantum Body Scan Test',
+                    isUrdu ? 'گرتے بالوں کا علاج و پی آر پی' : 'Hair Fall & Skin Consultation',
+                  ].map((tag, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setReferralReason(tag)}
+                      className="bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
+                    >
+                      + {tag}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <input
+                  type="checkbox"
+                  id="includeReferralFee"
+                  checked={includeReferralFee}
+                  onChange={(e) => setIncludeReferralFee(e.target.checked)}
+                  className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                />
+                <label htmlFor="includeReferralFee" className="text-slate-800 font-bold text-xs cursor-pointer">
+                  {isUrdu
+                    ? 'ریفرل کنسلٹیشن فیس مریض کے رننگ بل میں خودکار شامل کریں'
+                    : 'Auto-add Referral Consultation Fee to Patient Invoice'}
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setReferralModalApp(null)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  {isUrdu ? 'منسوخ کریں' : 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  disabled={isProcessingReferral}
+                  className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-98 cursor-pointer"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>{isProcessingReferral ? 'Processing...' : isUrdu ? 'ریفرل مکمل کریں اور بل اپ ڈیٹ کریں' : 'Confirm Referral & Update Bill'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: PRINTABLE MONEY SLIP / INVOICE ================= */}
+      {selectedSlipForPrint && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 space-y-6 shadow-2xl relative text-slate-900">
+            <div className="no-print flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-emerald-600" />
+                <span>{isUrdu ? 'مریض کی رسید و کیش سلپ کا پرنٹ پریویو' : 'Patient Money Slip Print Preview'}</span>
+              </h3>
+              <button
+                onClick={() => setSelectedSlipForPrint(null)}
+                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Official Printable Slip */}
+            <div id="doc-printable-slip" className="printable-area bg-white p-6 rounded-2xl border border-slate-300 space-y-5 text-xs text-slate-900">
+              {/* Slip Header */}
+              <div className="flex justify-between items-start border-b-2 border-emerald-800 pb-4">
+                <div>
+                  <h2 className="text-xl font-black text-emerald-950">
+                    {isUrdu ? 'حافظ کلینک اینڈ ہاسپٹل' : 'Hafiz Clinic & Medical Center'}
+                  </h2>
+                  <p className="text-xs text-emerald-800 font-bold mt-0.5">
+                    {isUrdu ? 'شعبہ او پی ڈی، چشمہ سازی و ہربل فارمیسی' : 'OPD, Optical Eye Care & Herbal Pharmacy'}
+                  </p>
+                  <p className="text-[10px] text-slate-600 mt-1">
+                    پنجاب ہیلتھ کیئر کمیشن رجسٹرڈ • PHC Reg # PHC-REG-84920 | ہیلپ لائن: 0300-1234567
+                  </p>
+                </div>
+                <div className="text-right">
+                  <div className="font-black text-sm text-emerald-900 font-mono">
+                    SLIP #{selectedSlipForPrint.slipNo || (selectedSlipForPrint as any).slipNumber || 'HC-000'}
+                  </div>
+                  <div className="text-[10px] text-slate-600 font-bold mt-0.5">
+                    {isUrdu ? 'تاریخ:' : 'Date:'} {selectedSlipForPrint.date}
+                  </div>
+                  <span className={`inline-block mt-1 px-2.5 py-0.5 rounded text-[10px] font-bold ${
+                    selectedSlipForPrint.paymentStatus === 'Paid'
+                      ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                      : selectedSlipForPrint.paymentStatus === 'Partial'
+                      ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                      : 'bg-rose-100 text-rose-900 border border-rose-300'
+                  }`}>
+                    {selectedSlipForPrint.paymentStatus} ({selectedSlipForPrint.paymentMethod || 'Cash'})
+                  </span>
+                </div>
+              </div>
+
+              {/* Patient Info Row */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200 font-semibold">
+                <div>
+                  <span className="text-slate-500 block text-[10px]">{isUrdu ? 'مریض کا نام' : 'Patient Name'}</span>
+                  <strong className="text-slate-900">{selectedSlipForPrint.patientName}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px]">{isUrdu ? 'موبائل نمبر' : 'Phone'}</span>
+                  <strong className="text-slate-900 font-mono">{selectedSlipForPrint.patientPhone || '—'}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px]">{isUrdu ? 'متعلقہ معالج' : 'Doctor'}</span>
+                  <strong className="text-emerald-800">{selectedSlipForPrint.doctorName}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block text-[10px]">{isUrdu ? 'طریقہ ادائیگی' : 'Payment Method'}</span>
+                  <strong className="text-slate-900">{selectedSlipForPrint.paymentMethod || 'Cash'}</strong>
+                </div>
+              </div>
+
+              {/* Items Breakdown Table */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-slate-100 text-slate-700 border-b border-slate-200 text-[11px] font-bold">
+                      <th className="p-2.5">#</th>
+                      <th className="p-2.5">{isUrdu ? 'تفصیل سروس / آئٹم' : 'Item / Service Description'}</th>
+                      <th className="p-2.5">{isUrdu ? 'شعبہ' : 'Category'}</th>
+                      <th className="p-2.5">{isUrdu ? 'تعداد' : 'Qty'}</th>
+                      <th className="p-2.5">{isUrdu ? 'ریٹ' : 'Unit Price'}</th>
+                      <th className="p-2.5">{isUrdu ? 'ٹوٹل' : 'Total'}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-[11px]">
+                    {(selectedSlipForPrint.items || []).map((item, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50">
+                        <td className="p-2.5 font-mono text-slate-400">{idx + 1}</td>
+                        <td className="p-2.5 font-bold text-slate-900">{item.description}</td>
+                        <td className="p-2.5 text-slate-600">{item.category}</td>
+                        <td className="p-2.5 font-mono">{item.quantity}</td>
+                        <td className="p-2.5 font-mono">Rs. {(item.unitPrice ?? 0).toLocaleString()}</td>
+                        <td className="p-2.5 font-mono font-bold text-emerald-800">Rs. {(item.totalPrice ?? (item as any).total ?? ((item.unitPrice || 0) * (item.quantity || 1))).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Totals Calculation Box */}
+              <div className="flex justify-end pt-2">
+                <div className="w-full sm:w-64 space-y-1.5 bg-slate-50 p-3.5 rounded-xl border border-slate-200 font-mono font-bold text-xs">
+                  <div className="flex justify-between text-slate-600">
+                    <span>{isUrdu ? 'سب ٹوٹل:' : 'Subtotal:'}</span>
+                    <span>Rs. {(selectedSlipForPrint.subtotal ?? 0).toLocaleString()}</span>
+                  </div>
+                  {(((selectedSlipForPrint as any).discountAmount ?? selectedSlipForPrint.discount ?? 0) > 0) && (
+                    <div className="flex justify-between text-rose-600">
+                      <span>{isUrdu ? 'رعایت / ڈسکاؤنٹ:' : 'Discount:'}</span>
+                      <span>- Rs. {(((selectedSlipForPrint as any).discountAmount ?? selectedSlipForPrint.discount ?? 0)).toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-slate-900 border-t border-slate-200 pt-1 text-sm font-black">
+                    <span>{isUrdu ? 'کل واجب الادا:' : 'Grand Total:'}</span>
+                    <span className="text-emerald-800">Rs. {(selectedSlipForPrint.totalAmount ?? 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-teal-800">
+                    <span>{isUrdu ? 'وصول شدہ رقم:' : 'Paid Amount:'}</span>
+                    <span>Rs. {(selectedSlipForPrint.paidAmount ?? 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-amber-800 border-t border-slate-200 pt-1">
+                    <span>{isUrdu ? 'بقایا واجب الادا:' : 'Balance Due:'}</span>
+                    <span>Rs. {(selectedSlipForPrint.balanceAmount ?? 0).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer & Signature */}
+              <div className="pt-4 border-t border-slate-200 flex justify-between items-end">
+                <div className="space-y-0.5 text-[10px] text-slate-500">
+                  <div>• ادویات اور عینک واپس یا تبدیل نہیں ہوں گی۔</div>
+                  <div>• یہ رسید کمپیوٹر سے باضابطہ جاری کی گئی ہے۔</div>
+                </div>
+                <div className="text-center space-y-1">
+                  <div className="font-serif italic text-xs font-bold border-b border-slate-400 px-4 pb-1 text-slate-800">
+                    Hafiz Clinic Accounts
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-bold">{isUrdu ? 'کیشیئر / کیش انچارج' : 'Cashier / Accounts Authority'}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="no-print flex flex-wrap justify-end items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedSlipForPrint(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                {isUrdu ? 'بند کریں' : 'Close'}
+              </button>
+              <button
+                type="button"
+                disabled={isGeneratingPdf}
+                onClick={async () => {
+                  if (selectedSlipForPrint) {
+                    setIsGeneratingPdf(true);
+                    try {
+                      await downloadInvoicePdf(selectedSlipForPrint, 'doc-printable-slip');
+                    } finally {
+                      setIsGeneratingPdf(false);
+                    }
+                  }
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Direct Download PDF Document"
+              >
+                {isGeneratingPdf ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                <span>{isUrdu ? 'ڈاؤنلوڈ PDF رسید' : 'Save PDF'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => selectedSlipForPrint && printInvoiceHtml(selectedSlipForPrint, { method: 'window' })}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold text-xs rounded-xl border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Open dedicated print page"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>{isUrdu ? 'نئی ونڈو میں پرنٹ' : 'Open Clean Print Tab'}</span>
+              </button>
+              <button
+                type="button"
+                disabled={isGeneratingPdf}
+                onClick={async () => {
+                  if (selectedSlipForPrint) {
+                    setIsGeneratingPdf(true);
+                    try {
+                      await downloadInvoicePdf(selectedSlipForPrint, 'doc-printable-slip');
+                    } finally {
+                      setIsGeneratingPdf(false);
+                    }
+                  }
+                }}
+                className="px-6 py-2.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all active:scale-98 cursor-pointer"
+              >
+                {isGeneratingPdf ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+                <span>{isUrdu ? 'رسید پرنٹ کریں / PDF ڈاؤن لوڈ کریں' : 'Print Slip / Download PDF'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PRINTABLE PRESCRIPTION SLIP MODAL */}
+      {selectedRxForPrint && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 space-y-6 shadow-2xl relative text-slate-900">
+            <div className="no-print flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-slate-900 text-sm">
+                {isUrdu ? 'الیکٹرانک نسخہ کا پرنٹ پریویو (Print Preview)' : 'Electronic Prescription Print Preview'}
+              </h3>
+              <button
+                onClick={() => setSelectedRxForPrint(null)}
+                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Official Printable Prescription Container */}
+            <div id="doc-printable-rx" className="printable-area bg-white p-6 rounded-2xl border border-slate-300 space-y-6">
+              {/* Prescription Header */}
+              <div className="flex justify-between items-start border-b-2 border-emerald-800 pb-4">
+                <div>
+                  <h2 className="text-xl font-black text-emerald-950">
+                    {isUrdu ? 'حافظ کلینک اینڈ آن لائن ہسپتال' : 'Hafiz Clinic & Medical Center'}
+                  </h2>
+                  <p className="text-xs text-emerald-800 font-bold mt-0.5">
+                    {selectedRxForPrint.doctorName || (isUrdu ? 'ڈاکٹر زیشان چوہدری (MBBS)' : 'Dr. Zeeshan Chaudhry (MBBS)')}
+                  </p>
+                  <p className="text-[10px] text-slate-600 mt-1">
+                    پنجاب ہیلتھ کیئر کمیشن رجسٹرڈ • PHC Reg # PHC-REG-84920 | Tel: 0300-1234567
+                  </p>
+                </div>
+                <div className="text-right text-xs">
+                  <div className="font-bold text-slate-900">{isUrdu ? 'تاریخ:' : 'Date:'} {selectedRxForPrint.date}</div>
+                  <div className="text-[10px] text-slate-500 font-mono">Rx ID: {selectedRxForPrint.id}</div>
+                  <div className="bg-emerald-100 text-emerald-900 px-2.5 py-0.5 rounded font-bold text-[10px] inline-block mt-1">
+                    ✓ Official Electronic Rx
+                  </div>
+                </div>
+              </div>
+
+              {/* Patient Details */}
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs flex justify-between items-center font-semibold">
+                <div>
+                  <span className="text-slate-500">{isUrdu ? 'مریض کا نام:' : 'Patient Name:'} </span>
+                  <strong className="text-slate-900">{selectedRxForPrint.patientName}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500">{isUrdu ? 'نوعیت معائنہ:' : 'Consultation Type:'} </span>
+                  <strong className="text-emerald-800">{isUrdu ? 'او پی ڈی چیک اپ / آن لائن' : 'OPD Checkup / Online'}</strong>
+                </div>
+              </div>
+
+              {/* Prescription Content (Rx Symbol & Medicines) */}
+              <div className="space-y-4">
+                <div className="text-3xl font-black text-emerald-900 font-serif">Rx</div>
+                <div className="bg-white p-4 rounded-xl border border-slate-200 text-xs leading-relaxed font-semibold whitespace-pre-wrap text-slate-900">
+                  {selectedRxForPrint.prescriptionText || selectedRxForPrint.content}
+                </div>
+
+                {selectedRxForPrint.rxNotes && (
+                  <div className="bg-teal-50 p-3 rounded-xl border border-teal-200 text-xs text-teal-900">
+                    <strong className="block mb-1 font-bold">{isUrdu ? 'طبی ملاحظات / ہدایات:' : 'Clinical Notes / Instructions:'}</strong>
+                    {selectedRxForPrint.rxNotes}
+                  </div>
+                )}
+
+                {selectedRxForPrint.rxPrecautions && (
+                  <div className="bg-amber-50 p-3 rounded-xl border border-amber-200 text-xs text-amber-900">
+                    <strong className="block mb-1 font-bold">{isUrdu ? 'پرہیز:' : 'Precautions / Avoid:'}</strong>
+                    {selectedRxForPrint.rxPrecautions}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer & Doctor Signature */}
+              <div className="pt-6 border-t border-slate-200 flex justify-between items-end text-xs">
+                <div className="space-y-1">
+                  <div className="text-[10px] text-slate-500">
+                    {isUrdu ? 'یہ الیکٹرانک نسخہ کمپیوٹر سے باضابطہ جاری کیا گیا ہے۔' : 'Computer-generated authenticated prescription document.'}
+                  </div>
+                  <div className="text-[10px] text-emerald-700 font-mono font-bold">Hafiz Clinic Telemedicine Portal</div>
+                </div>
+                <div className="text-center space-y-1">
+                  <div className="text-emerald-900 font-serif italic text-sm font-bold border-b border-slate-400 px-4 pb-1">
+                    {selectedRxForPrint.doctorName || 'Dr. Zeeshan Chaudhry'}
+                  </div>
+                  <div className="text-[10px] text-slate-600 font-bold">{isUrdu ? 'دستخط معالج و مہر' : 'Doctor Signature & Stamp'}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="no-print flex flex-wrap justify-end items-center gap-3 pt-2">
+              <button
+                onClick={() => setSelectedRxForPrint(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                {isUrdu ? 'بند کریں' : 'Close'}
+              </button>
+              <button
+                disabled={isGeneratingPdf}
+                onClick={async () => {
+                  if (selectedRxForPrint) {
+                    setIsGeneratingPdf(true);
+                    try {
+                      await downloadPrescriptionPdf(selectedRxForPrint, 'doc-printable-rx');
+                    } finally {
+                      setIsGeneratingPdf(false);
+                    }
+                  }
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Save PDF file"
+              >
+                {isGeneratingPdf ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                <span>{isUrdu ? 'ڈاؤنلوڈ PDF نسخہ' : 'Save PDF'}</span>
+              </button>
+              <button
+                disabled={isGeneratingPdf}
+                onClick={async () => {
+                  if (selectedRxForPrint) {
+                    setIsGeneratingPdf(true);
+                    try {
+                      await downloadPrescriptionPdf(selectedRxForPrint, 'doc-printable-rx');
+                    } finally {
+                      setIsGeneratingPdf(false);
+                    }
+                  }
+                }}
+                className="px-6 py-2.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all active:scale-98 cursor-pointer"
+              >
+                {isGeneratingPdf ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+                <span>{isUrdu ? 'نسخہ پرنٹ کریں / PDF میں محفوظ کریں' : 'Print Prescription / Save PDF'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* FOOTER BAR FOR DOCTOR WORKSPACE */}
       <footer className="bg-slate-900 text-slate-400 text-xs py-4 border-t border-slate-800 mt-auto">

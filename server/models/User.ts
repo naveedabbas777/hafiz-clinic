@@ -19,19 +19,21 @@ export interface IUser extends mongoose.Document {
 
 const UserSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
-  username: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true, index: true },
+  username: { type: String, required: true, unique: true, index: true },
   password: { type: String, required: true },
-  role: { type: String, enum: ['patient', 'doctor', 'admin'], default: 'patient' },
-  phone: { type: String },
+  role: { type: String, enum: ['patient', 'doctor', 'admin'], default: 'patient', index: true },
+  phone: { type: String, index: true },
   city: { type: String },
   address: { type: String },
-  mrn: { type: String },
+  mrn: { type: String, index: true },
   specialization: { type: String },
   qualification: { type: String },
   medicalHistory: { type: String },
-  status: { type: String, default: 'active' },
-  createdAt: { type: Date, default: Date.now },
+  status: { type: String, default: 'active', index: true },
+  createdAt: { type: Date, default: Date.now, index: true },
 });
+
+UserSchema.index({ role: 1, createdAt: -1 });
 
 export const User: any = mongoose.models.User || mongoose.model('User', UserSchema);

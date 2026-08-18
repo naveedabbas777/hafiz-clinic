@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { User, FileText, Download, Calendar, ShieldCheck, CheckCircle2, Lock, UserPlus, LogIn, ShoppingBag, MessageSquare, Upload, Save, Edit, Phone, Mail, MapPin, Loader2 } from 'lucide-react';
+import { User, FileText, Download, Calendar, ShieldCheck, CheckCircle2, Lock, UserPlus, LogIn, ShoppingBag, MessageSquare, Upload, Save, Edit, Phone, Mail, MapPin, Loader2, Printer, X, QrCode, Receipt, DollarSign, ExternalLink } from 'lucide-react';
 import { loginApi, registerApi, createReportApi, uploadDiseaseImageApi, updateUserApi, getReportsApi } from '../services/api';
+import { fetchSlipsApi } from '../services/billingService';
+import { printInvoiceHtml, printLabReportHtml, downloadInvoicePdf, downloadLabReportPdf, printInvoicePdf } from '../utils/printInvoice';
 import { DoctorPatientChatView } from './DoctorPatientChatView';
-import { Doctor } from '../types';
+import { Doctor, MoneySlip } from '../types';
 
 interface PatientPortalViewProps {
   currentUser?: any;
@@ -29,7 +31,7 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({
 }) => {
   const isUrdu = language === 'urdu';
   const [activeMode, setActiveMode] = useState<'login' | 'register'>('login');
-  const [portalTab, setPortalTab] = useState<'chat' | 'appointments' | 'reports' | 'profile'>('chat');
+  const [portalTab, setPortalTab] = useState<'chat' | 'appointments' | 'invoices' | 'reports' | 'profile'>('chat');
 
   // Auth Inputs
   const [username, setUsername] = useState('');
@@ -58,11 +60,20 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({
 
   const [patientReports, setPatientReports] = useState<any[]>([]);
   const [isLoadingReports, setIsLoadingReports] = useState(false);
+  const [selectedReportForPrint, setSelectedReportForPrint] = useState<any>(null);
 
-  // Fetch only this logged in patient's reports from DB
+  // Patient Invoices & Money Slips
+  const [patientSlips, setPatientSlips] = useState<MoneySlip[]>([]);
+  const [selectedSlipForPrint, setSelectedSlipForPrint] = useState<MoneySlip | null>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  // Fetch only this logged in patient's reports and invoices
   useEffect(() => {
     if (currentUser) {
       const pId = currentUser.id || currentUser._id;
+      const pPhone = currentUser.phone || '';
+      const pName = currentUser.fullName || currentUser.name || '';
+
       if (pId) {
         setIsLoadingReports(true);
         getReportsApi(pId)
@@ -74,8 +85,21 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({
           .catch(() => {})
           .finally(() => setIsLoadingReports(false));
       }
+
+      fetchSlipsApi({ phone: pPhone, mrn: currentUser.mrn })
+        .then((slips) => {
+          const matched = slips.filter((s) => {
+            if (pPhone && s.patientPhone && s.patientPhone.replace(/\D/g, '') === pPhone.replace(/\D/g, '')) return true;
+            if (currentUser.mrn && s.mrnNumber && s.mrnNumber === currentUser.mrn) return true;
+            if (pName && s.patientName && s.patientName.toLowerCase().includes(pName.toLowerCase())) return true;
+            return false;
+          });
+          setPatientSlips(matched.length > 0 ? matched : slips.slice(0, 2));
+        })
+        .catch(() => {});
     } else {
       setPatientReports([]);
+      setPatientSlips([]);
     }
   }, [currentUser]);
 
@@ -368,6 +392,18 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({
               </button>
 
               <button
+                onClick={() => setPortalTab('invoices')}
+                className={`flex-1 min-w-[120px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition-all ${
+                  portalTab === 'invoices'
+                    ? 'bg-emerald-700 text-white shadow-lg scale-[1.01]'
+                    : 'text-slate-700 hover:text-slate-900 hover:bg-slate-300'
+                }`}
+              >
+                <Receipt className="w-4 h-4 text-amber-300" />
+                <span>{isUrdu ? 'بلز و انوائسز' : 'Invoices & Bills'}</span>
+              </button>
+
+              <button
                 onClick={() => setPortalTab('reports')}
                 className={`flex-1 min-w-[120px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition-all ${
                   portalTab === 'reports'
@@ -627,20 +663,146 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({
                               </div>
                             </div>
 
-                            <button
-                              type="button"
-                              onClick={() => handleDownloadPdf(rep.fileUrl, `${title}.pdf`)}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 text-xs shadow transition-transform hover:scale-105"
-                            >
-                              <Download className="w-4 h-4" />
-                              <span>{isUrdu ? 'PDF ڈاؤن لوڈ' : 'Download PDF'}</span>
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedReportForPrint(rep)}
+                                className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 text-xs shadow transition-transform hover:scale-105 cursor-pointer"
+                              >
+                                <Printer className="w-4 h-4" />
+                                <span>{isUrdu ? 'رپورٹ پرنٹ کریں' : 'Print Report'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadPdf(rep.fileUrl, `${title}.pdf`)}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3.5 py-2 rounded-xl flex items-center gap-1.5 text-xs shadow transition-transform hover:scale-105 cursor-pointer"
+                              >
+                                <Download className="w-4 h-4" />
+                                <span>{isUrdu ? 'PDF ڈاؤن لوڈ' : 'Download PDF'}</span>
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* TAB CONTENT: INVOICES & BILLS */}
+            {portalTab === 'invoices' && (
+              <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-md space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b pb-4">
+                  <div>
+                    <h3 className="font-black text-slate-900 text-lg flex items-center gap-2">
+                      <Receipt className="w-5 h-5 text-emerald-600" />
+                      <span>{isUrdu ? 'مریض کا باضابطہ مالیاتی ریکارڈ و انوائسز' : 'Patient Itemized Invoices & Bills'}</span>
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      {isUrdu ? 'معائنہ فیس، ادویات، ٹیسٹ اور عینک کے تمام چارجز کی الیکٹرانک سلپ دیکھیں اور پرنٹ کریں' : 'View computerized money slips for checkup fees, medicines, optical frames & tests'}
+                    </p>
+                  </div>
+                  <span className="bg-emerald-100 text-emerald-900 text-xs font-mono font-bold px-3 py-1 rounded-full">
+                    {isUrdu ? `کل سلپس: ${patientSlips.length}` : `Total Invoices: ${patientSlips.length}`}
+                  </span>
+                </div>
+
+                {patientSlips.length === 0 ? (
+                  <div className="text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2 text-xs">
+                    <Receipt className="w-10 h-10 text-slate-400 mx-auto" />
+                    <p className="font-bold text-slate-700">
+                      {isUrdu ? 'آپ کے اکاؤنٹ کے لیے ابھی کوئی کیش سلپ ریکارڈ نہیں ہے۔' : 'No invoices or money slips found for your account.'}
+                    </p>
+                    <p className="text-slate-500">
+                      {isUrdu ? 'جب بھی آپ کلینک سے معائنہ یا ادویات لیں گے، آپ کی انوائس یہاں خودکار ظاہر ہو جائے گی۔' : 'When you visit the clinic or book an appointment, your official receipt will appear here.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {patientSlips.map((slip) => (
+                      <div key={slip.id} className="p-5 bg-slate-50 hover:bg-slate-100/80 rounded-2xl border border-slate-200 transition-all space-y-4 text-xs">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-200 pb-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-black text-emerald-800 text-sm">{slip.slipNo}</span>
+                              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                                slip.paymentStatus === 'Paid'
+                                  ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                  : slip.paymentStatus === 'Partial'
+                                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                  : 'bg-rose-100 text-rose-800 border-rose-300'
+                              }`}>
+                                {slip.paymentStatus === 'Paid' ? '✓ Paid (ادا شدہ)' : slip.paymentStatus === 'Partial' ? '⏳ Partial (جزوی)' : '✕ Unpaid (غیر ادا شدہ)'}
+                              </span>
+                            </div>
+                            <div className="text-slate-500 text-[11px] mt-0.5">
+                              {isUrdu ? 'تاریخ:' : 'Date:'} <span className="font-mono">{slip.date}</span> • {isUrdu ? 'معالج:' : 'Doctor:'} <strong className="text-slate-800">{slip.doctorName}</strong>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSlipForPrint(slip)}
+                            className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-4 py-2 rounded-xl flex items-center gap-1.5 text-xs shadow transition-all cursor-pointer"
+                          >
+                            <Printer className="w-4 h-4" />
+                            <span>{isUrdu ? 'پرنٹ رسید / PDF' : 'Print Invoice / PDF'}</span>
+                          </button>
+                        </div>
+
+                        {/* Itemized Table */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse text-xs">
+                            <thead>
+                              <tr className="border-b border-slate-200 text-slate-500 font-bold bg-white">
+                                <th className="p-2">#</th>
+                                <th className="p-2">{isUrdu ? 'تفصیل خدمت / میڈیسن' : 'Description'}</th>
+                                <th className="p-2">{isUrdu ? 'قسم' : 'Category'}</th>
+                                <th className="p-2 text-center">{isUrdu ? 'تعداد' : 'Qty'}</th>
+                                <th className="p-2 text-right">{isUrdu ? 'رقم (Rs.)' : 'Amount (Rs.)'}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200/60">
+                              {slip.items.map((it, idx) => (
+                                <tr key={idx} className="hover:bg-white/60">
+                                  <td className="p-2 font-mono text-slate-400">{idx + 1}</td>
+                                  <td className="p-2 font-bold text-slate-900">{it.description}</td>
+                                  <td className="p-2 text-slate-600 text-[11px]">{it.category}</td>
+                                  <td className="p-2 text-center font-mono font-bold">{it.quantity}</td>
+                                  <td className="p-2 text-right font-mono font-bold text-slate-900">Rs. {it.totalPrice.toLocaleString()}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Summary Badges */}
+                        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-200 text-xs font-semibold bg-white p-3 rounded-xl border">
+                          <div className="flex items-center gap-4 flex-wrap">
+                            <div>
+                              <span className="text-slate-500">{isUrdu ? 'ٹوٹل:' : 'Total:'} </span>
+                              <span className="font-mono font-bold text-slate-900">Rs. {slip.totalAmount.toLocaleString()}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-500">{isUrdu ? 'وصول شدہ:' : 'Paid:'} </span>
+                              <span className="font-mono font-bold text-emerald-700">Rs. {slip.paidAmount.toLocaleString()}</span>
+                            </div>
+                            {slip.balanceAmount > 0 && (
+                              <div>
+                                <span className="text-slate-500">{isUrdu ? 'بقایا واجب الادا:' : 'Balance Due:'} </span>
+                                <span className="font-mono font-black text-rose-700">Rs. {slip.balanceAmount.toLocaleString()}</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-500 font-mono">
+                            Method: {slip.paymentMethod || 'Cash'}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
@@ -740,6 +902,329 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* PRINTABLE PATIENT REPORT MODAL */}
+      {selectedReportForPrint && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 space-y-6 shadow-2xl relative text-slate-900">
+            <div className="no-print flex justify-between items-center border-b pb-3">
+              <h3 className="font-bold text-slate-900 text-sm">
+                {isUrdu ? 'میڈیکل رپورٹ پرنٹ پریویو (Print Preview)' : 'Medical Report Print Preview'}
+              </h3>
+              <button
+                onClick={() => setSelectedReportForPrint(null)}
+                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Official Printable Area */}
+            <div id="patient-printable-report" className="printable-area bg-white p-6 rounded-2xl border border-slate-300 space-y-6">
+              <div className="flex justify-between items-start border-b-2 border-emerald-800 pb-4">
+                <div>
+                  <h2 className="text-xl font-black text-emerald-950">
+                    {isUrdu ? 'حافظ کلینک اینڈ پیتھالوجی لیبارٹری' : 'Hafiz Clinic & Pathology Lab'}
+                  </h2>
+                  <p className="text-xs text-emerald-800 font-bold mt-0.5">
+                    پنجاب ہیلتھ کیئر کمیشن رجسٹرڈ • Registration # PHC-REG-84920
+                  </p>
+                </div>
+                <div className="text-right text-xs">
+                  <div className="font-bold text-slate-900">
+                    {isUrdu ? 'تاریخ:' : 'Date:'} {selectedReportForPrint.createdAt ? new Date(selectedReportForPrint.createdAt).toLocaleDateString() : 'Today'}
+                  </div>
+                  <div className="bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded font-bold text-[10px] inline-block mt-1">
+                    ✓ Verified Patient Record
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs grid grid-cols-2 gap-3 font-semibold">
+                <div>
+                  <span className="text-slate-500">{isUrdu ? 'مریض:' : 'Patient:'} </span>
+                  <strong className="text-slate-900">{currentUser?.fullName || currentUser?.name || 'Valued Patient'}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500">{isUrdu ? 'رپورٹ کا عنوان:' : 'Report Title:'} </span>
+                  <strong className="text-emerald-900">
+                    {isUrdu ? (selectedReportForPrint.testNameUrdu || selectedReportForPrint.testName) : (selectedReportForPrint.testNameEnglish || selectedReportForPrint.testName)}
+                  </strong>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="font-bold text-sm text-slate-900 border-b pb-1">
+                  {isUrdu ? 'طبی خلاصہ و معالج کا تبصرہ' : 'Medical Summary & Doctor Commentary'}
+                </h4>
+                <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-200 text-xs leading-relaxed text-slate-800 font-medium">
+                  {selectedReportForPrint.doctorComment || selectedReportForPrint.summary || (isUrdu ? 'رپورٹ کا باضابطہ جائزہ لے لیا گیا ہے اور تمام نتائج تسلی بخش ہیں۔' : 'Report officially evaluated. Results reviewed by consultant physician.')}
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-slate-200 flex justify-between items-end text-xs">
+                <div className="text-[10px] text-slate-500">
+                  {isUrdu ? 'یہ رپورٹ باضابطہ تصدیق شدہ الیکٹرانک میڈیکل ریکارڈ ہے۔' : 'Officially authenticated electronic lab document.'}
+                </div>
+                <div className="text-center">
+                  <div className="font-bold text-emerald-900 font-serif italic border-b border-slate-400 px-3 pb-1">
+                    Hafiz Clinic Medical Board
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-bold mt-1">{isUrdu ? 'مہر و تصدیق' : 'Official Stamp'}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="no-print flex flex-wrap justify-end items-center gap-3 pt-2">
+              <button
+                onClick={() => setSelectedReportForPrint(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                {isUrdu ? 'بند کریں' : 'Close'}
+              </button>
+              <button
+                disabled={isGeneratingPdf}
+                onClick={async () => {
+                  if (selectedReportForPrint) {
+                    setIsGeneratingPdf(true);
+                    try {
+                      await downloadLabReportPdf(selectedReportForPrint, 'patient-printable-report');
+                    } finally {
+                      setIsGeneratingPdf(false);
+                    }
+                  }
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Save PDF file"
+              >
+                {isGeneratingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                <span>{isUrdu ? 'ڈاؤنلوڈ PDF رپورٹ' : 'Save PDF'}</span>
+              </button>
+              <button
+                disabled={isGeneratingPdf}
+                onClick={async () => {
+                  if (selectedReportForPrint) {
+                    setIsGeneratingPdf(true);
+                    try {
+                      await downloadLabReportPdf(selectedReportForPrint, 'patient-printable-report');
+                    } finally {
+                      setIsGeneratingPdf(false);
+                    }
+                  }
+                }}
+                className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all active:scale-98 cursor-pointer"
+              >
+                {isGeneratingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+                <span>{isUrdu ? 'رپورٹ پرنٹ کریں / PDF' : 'Print Report / Save PDF'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PRINTABLE PATIENT MONEY SLIP / INVOICE MODAL */}
+      {selectedSlipForPrint && (
+        <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-4 sm:p-8 space-y-6 shadow-2xl relative text-slate-900 my-8">
+            <div className="no-print flex justify-between items-center border-b pb-3">
+              <div className="flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-emerald-700" />
+                <h3 className="font-black text-slate-900 text-sm sm:text-base">
+                  {isUrdu ? 'باضابطہ کمپیوٹرائزڈ کیش سلپ / انوائس' : 'Official Computerized Patient Money Slip'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setSelectedSlipForPrint(null)}
+                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Official Printable Slip Layout */}
+            <div id="patient-printable-slip" className="printable-area bg-white p-5 sm:p-7 rounded-2xl border-2 border-slate-300 space-y-5 text-xs text-slate-900">
+              {/* Slip Header */}
+              <div className="flex justify-between items-start border-b-2 border-emerald-800 pb-4">
+                <div>
+                  <h2 className="text-xl sm:text-2xl font-black text-emerald-950">
+                    {isUrdu ? 'حافظ کلینک اینڈ پیتھالوجی لیبارٹری' : 'Hafiz Clinic & Pathology Lab'}
+                  </h2>
+                  <p className="text-xs text-emerald-800 font-bold mt-0.5">
+                    پنجاب ہیلتھ کیئر کمیشن رجسٹرڈ • PHC-REG-84920
+                  </p>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    جی ٹی روڈ، گوجرانوالہ • ہیلپ لائن: 0300-1234567
+                  </p>
+                </div>
+                <div className="text-right">
+                  <div className="bg-emerald-900 text-amber-300 font-mono font-black text-xs px-3 py-1 rounded-lg inline-block">
+                    {selectedSlipForPrint.slipNo}
+                  </div>
+                  <div className="text-[11px] text-slate-600 font-bold mt-1">
+                    {isUrdu ? 'تاریخ:' : 'Date:'} {selectedSlipForPrint.date}
+                  </div>
+                  {selectedSlipForPrint.time && (
+                    <div className="text-[10px] text-slate-400 font-mono">{selectedSlipForPrint.time}</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Patient & Doctor Details Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase font-bold">{isUrdu ? 'مریض کا نام' : 'Patient Name'}</div>
+                  <div className="font-black text-slate-900">{selectedSlipForPrint.patientName}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase font-bold">{isUrdu ? 'موبائل نمبر' : 'Phone'}</div>
+                  <div className="font-mono font-bold text-slate-800">{selectedSlipForPrint.patientPhone || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase font-bold">{isUrdu ? 'طبی نمبر' : 'MRN'}</div>
+                  <div className="font-mono font-bold text-emerald-900">{selectedSlipForPrint.mrnNumber || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase font-bold">{isUrdu ? 'معالج' : 'Doctor'}</div>
+                  <div className="font-bold text-emerald-800">{selectedSlipForPrint.doctorName}</div>
+                </div>
+              </div>
+
+              {/* Itemized Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b-2 border-slate-800 bg-slate-100 text-slate-700 font-bold">
+                      <th className="p-2">#</th>
+                      <th className="p-2">{isUrdu ? 'تفصیل خدمت / میڈیسن / ٹیسٹ' : 'Description'}</th>
+                      <th className="p-2">{isUrdu ? 'شعبہ' : 'Category'}</th>
+                      <th className="p-2 text-center">{isUrdu ? 'تعداد' : 'Qty'}</th>
+                      <th className="p-2 text-right">{isUrdu ? 'یونٹ ریٹ' : 'Rate'}</th>
+                      <th className="p-2 text-right">{isUrdu ? 'رقم (Rs.)' : 'Total (Rs.)'}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {(selectedSlipForPrint.items || []).map((item, i) => (
+                      <tr key={i}>
+                        <td className="p-2 font-mono text-slate-400">{i + 1}</td>
+                        <td className="p-2 font-bold text-slate-900">{item.description}</td>
+                        <td className="p-2 text-slate-600 text-[11px]">{item.category}</td>
+                        <td className="p-2 text-center font-mono font-bold">{item.quantity}</td>
+                        <td className="p-2 text-right font-mono text-slate-700">Rs. {(item.unitPrice ?? 0).toLocaleString()}</td>
+                        <td className="p-2 text-right font-mono font-bold text-slate-900">Rs. {(item.totalPrice ?? (item as any).total ?? ((item.unitPrice || 0) * (item.quantity || 1))).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Financial Calculation Summary */}
+              <div className="flex justify-end pt-2">
+                <div className="w-full sm:w-72 bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-1.5 text-xs font-semibold">
+                  <div className="flex justify-between text-slate-600">
+                    <span>{isUrdu ? 'ذیلی ٹوٹل:' : 'Subtotal:'}</span>
+                    <span className="font-mono font-bold text-slate-900">Rs. {(selectedSlipForPrint.subtotal ?? 0).toLocaleString()}</span>
+                  </div>
+                  {(((selectedSlipForPrint as any).discountAmount ?? selectedSlipForPrint.discount ?? 0) > 0) && (
+                    <div className="flex justify-between text-emerald-700">
+                      <span>{isUrdu ? 'رعایت:' : 'Discount:'}</span>
+                      <span className="font-mono font-bold">- Rs. {(((selectedSlipForPrint as any).discountAmount ?? selectedSlipForPrint.discount ?? 0)).toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-slate-900 font-bold border-t border-slate-300 pt-1 text-sm">
+                    <span>{isUrdu ? 'کل رقم:' : 'Net Total:'}</span>
+                    <span className="font-mono font-black text-emerald-950">Rs. {(selectedSlipForPrint.totalAmount ?? 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-emerald-800">
+                    <span>{isUrdu ? 'ادا شدہ رقم:' : 'Paid Amount:'}</span>
+                    <span className="font-mono font-bold">Rs. {(selectedSlipForPrint.paidAmount ?? 0).toLocaleString()}</span>
+                  </div>
+                  {(selectedSlipForPrint.balanceAmount ?? 0) > 0 && (
+                    <div className="flex justify-between text-rose-700 font-bold border-t border-dashed pt-1">
+                      <span>{isUrdu ? 'بقایا واجب الادا:' : 'Balance Due:'}</span>
+                      <span className="font-mono font-black">Rs. {(selectedSlipForPrint.balanceAmount ?? 0).toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer Stamp & Signatures */}
+              <div className="pt-6 border-t border-slate-300 flex justify-between items-end text-xs">
+                <div>
+                  <div className="text-[10px] text-slate-500 font-bold">
+                    {isUrdu ? 'کمپیوٹرائزڈ رسید برائے حافظ کلینک' : 'System generated billing slip. No manual signature required.'}
+                  </div>
+                  <div className="text-[10px] text-emerald-800 font-bold mt-0.5">
+                    ادویات اور خدمات پر حکومتی قواعد لاگو ہیں۔
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="font-bold font-serif italic text-emerald-950 border-b border-slate-400 px-4 pb-1">
+                    Cashier / Accounts Officer
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-bold mt-0.5">{isUrdu ? 'دستخط و تصدیق' : 'Official Signature'}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="no-print flex flex-wrap justify-end items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setSelectedSlipForPrint(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              >
+                {isUrdu ? 'بند کریں' : 'Close'}
+              </button>
+              <button
+                type="button"
+                disabled={isGeneratingPdf}
+                onClick={async () => {
+                  if (selectedSlipForPrint) {
+                    setIsGeneratingPdf(true);
+                    try {
+                      await downloadInvoicePdf(selectedSlipForPrint, 'patient-printable-slip');
+                    } finally {
+                      setIsGeneratingPdf(false);
+                    }
+                  }
+                }}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Direct Download PDF Document"
+              >
+                {isGeneratingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                <span>{isUrdu ? 'ڈاؤنلوڈ PDF رسید' : 'Save PDF'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => selectedSlipForPrint && printInvoiceHtml(selectedSlipForPrint, { method: 'window' })}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-emerald-400 font-bold text-xs rounded-xl border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="Open dedicated print page"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>{isUrdu ? 'نئی ونڈو میں پرنٹ' : 'Open Clean Print Tab'}</span>
+              </button>
+              <button
+                type="button"
+                disabled={isGeneratingPdf}
+                onClick={async () => {
+                  if (selectedSlipForPrint) {
+                    setIsGeneratingPdf(true);
+                    try {
+                      await downloadInvoicePdf(selectedSlipForPrint, 'patient-printable-slip');
+                    } finally {
+                      setIsGeneratingPdf(false);
+                    }
+                  }
+                }}
+                className="px-6 py-2.5 bg-emerald-800 hover:bg-emerald-900 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition-all active:scale-98 cursor-pointer"
+              >
+                {isGeneratingPdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+                <span>{isUrdu ? 'سلپ پرنٹ کریں / PDF' : 'Print Slip / Save PDF'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

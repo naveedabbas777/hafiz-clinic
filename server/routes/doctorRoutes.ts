@@ -70,7 +70,7 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     if (getMongoConnectedStatus()) {
-      const updated = await Doctor.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      const updated = await Doctor.findByIdAndUpdate(req.params.id, req.body, { returnDocument: 'after' });
       return res.json({ success: true, doctor: updated });
     }
     return res.json({ success: true, doctor: { id: req.params.id, ...req.body } });

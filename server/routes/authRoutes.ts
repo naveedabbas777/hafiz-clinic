@@ -80,12 +80,24 @@ router.post('/login', async (req: Request, res: Response) => {
             { expiresIn: '7d' }
           );
 
+          let normalizedId = user._id.toString();
+          if (user.role === 'doctor') {
+            const uName = (user.username || '').toLowerCase();
+            const uEmail = (user.email || '').toLowerCase();
+            const uFullName = (user.name || '').toLowerCase();
+            if (uName === 'drzeeshan' || uName === 'doctor1' || uEmail.includes('zeeshan') || uFullName.includes('zeeshan') || uFullName.includes('زیشان')) {
+              normalizedId = 'doc-1';
+            } else if (uName === 'drwaqas' || uName === 'doctor2' || uEmail.includes('waqas') || uFullName.includes('waqas') || uFullName.includes('وقاص')) {
+              normalizedId = 'doc-2';
+            }
+          }
+
           return res.json({
             success: true,
             token,
             user: {
-              id: user._id.toString(),
-              _id: user._id.toString(),
+              id: normalizedId,
+              _id: normalizedId,
               name: user.name,
               fullName: user.name,
               email: user.email,

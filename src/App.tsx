@@ -12,6 +12,7 @@ import {
 } from './data/initialData';
 import { Disease, Product, OrderItem, Doctor, Appointment, Order, ClinicSettings, HealthArticle } from './types';
 import { getAppointmentsApi, createAppointmentApi, updateAppointmentApi } from './services/api';
+import { createAutoInvoiceFromAppointment } from './services/billingService';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { HeroSlider } from './components/HeroSlider';
@@ -205,10 +206,14 @@ export default function App() {
   };
 
   const handleUpdateAppointmentStatus = async (id: string, status: 'Pending' | 'Approved' | 'Completed' | 'Cancelled') => {
+    const targetApp = appointments.find((a) => a.id === id);
     setAppointments((prev) =>
       prev.map((app) => (app.id === id ? { ...app, status } : app))
     );
     await updateAppointmentApi(id, { status });
+    if (status === 'Approved' && targetApp) {
+      createAutoInvoiceFromAppointment({ ...targetApp, status }, doctors).catch(() => {});
+    }
   };
 
   // Dedicated Product Pages references
