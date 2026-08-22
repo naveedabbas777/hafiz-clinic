@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { User, FileText, Download, Calendar, ShieldCheck, CheckCircle2, Lock, UserPlus, LogIn, ShoppingBag, MessageSquare, Upload, Save, Edit, Phone, Mail, MapPin, Loader2, Printer, X, QrCode, Receipt, DollarSign, ExternalLink } from 'lucide-react';
-import { loginApi, registerApi, createReportApi, uploadDiseaseImageApi, updateUserApi, getReportsApi } from '../services/api';
+import { User, FileText, Download, Calendar, ShieldCheck, CheckCircle2, Lock, UserPlus, LogIn, ShoppingBag, MessageSquare, Upload, Save, Edit, Phone, Mail, MapPin, Loader2, Printer, X, QrCode, Receipt, DollarSign, ExternalLink, Trash2 } from 'lucide-react';
+import { loginApi, registerApi, createReportApi, uploadDiseaseImageApi, updateUserApi, getReportsApi, deleteReportApi } from '../services/api';
 import { fetchSlipsApi } from '../services/billingService';
 import { printInvoiceHtml, printLabReportHtml, downloadInvoicePdf, downloadLabReportPdf, printInvoicePdf } from '../utils/printInvoice';
 import { DoctorPatientChatView } from './DoctorPatientChatView';
@@ -679,6 +679,23 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({
                               >
                                 <Download className="w-4 h-4" />
                                 <span>{isUrdu ? 'PDF ڈاؤن لوڈ' : 'Download PDF'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const confirmMsg = isUrdu
+                                    ? 'کیا آپ واقعی یہ میڈیکل رپورٹ ڈیلیٹ کرنا چاہتے ہیں؟ (منسلکہ فائل Cloudinary سے بھی ڈیلیٹ ہو جائے گی)'
+                                    : 'Are you sure you want to delete this report? File will be removed from Cloudinary.';
+                                  if (confirm(confirmMsg)) {
+                                    const repId = rep.id || rep._id;
+                                    setPatientReports((prev) => prev.filter((r) => r.id !== rep.id && (r as any)._id !== rep._id));
+                                    await deleteReportApi(repId, rep.fileUrl).catch(() => {});
+                                  }
+                                }}
+                                className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold px-2.5 py-2 rounded-xl flex items-center gap-1 text-xs shadow-xs transition-colors cursor-pointer"
+                                title={isUrdu ? 'رپورٹ ڈیلیٹ کریں' : 'Delete Report'}
+                              >
+                                <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
                           </div>

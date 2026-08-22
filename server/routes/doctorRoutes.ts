@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { Doctor } from '../models/Doctor';
 import { getMongoConnectedStatus } from '../config/db';
+import { deleteFromCloudinary } from '../config/cloudinary';
 
 const router = Router();
 
@@ -70,6 +71,11 @@ router.post('/', async (req: Request, res: Response) => {
 router.put('/:id', async (req: Request, res: Response) => {
   try {
     if (getMongoConnectedStatus()) {
+      const existing = await Doctor.findById(req.params.id) || await Doctor.findOne({ id: req.params.id });
+      // If image is being replaced and old image is on Cloudinary, delete old image
+      if (existing?.image && req.body.image && existing.image !== req.body.image) {
+        deleteFromCloudinary(existing.image, 'image').catch((err) => console.error('Doctor old image cleanup error:', err));
+      }
       const updated = await Doctor.findByIdAndUpdate(req.params.id, req.body, { returnDocument: 'after' });
       return res.json({ success: true, doctor: updated });
     }
@@ -82,10 +88,21 @@ router.put('/:id', async (req: Request, res: Response) => {
 // DELETE /api/doctors/:id
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
+    const imageUrl = req.body?.imageUrl || (req.query?.imageUrl as string);
+
     if (getMongoConnectedStatus()) {
+      const doctor = await Doctor.findById(req.params.id) || await Doctor.findOne({ id: req.params.id });
+      const targetImage = doctor?.image || imageUrl;
+      if (targetImage) {
+        await deleteFromCloudinary(targetImage, 'image');
+      }
       await Doctor.findByIdAndDelete(req.params.id);
+      await Doctor.findOneAndDelete({ id: req.params.id });
+    } else if (imageUrl) {
+      await deleteFromCloudinary(imageUrl, 'image');
     }
-    return res.json({ success: true, message: 'Doctor deleted successfully.' });
+
+    return res.json({ success: true, message: 'Doctor and Cloudinary image deleted successfully.' });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }

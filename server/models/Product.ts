@@ -8,6 +8,8 @@ export interface IProduct extends mongoose.Document {
   category: string;
   categoryUrdu?: string;
   image?: string;
+  videoUrl?: string;
+  videoType?: string;
   descriptionUrdu?: string;
   descriptionEnglish?: string;
   stock?: number;
@@ -23,6 +25,8 @@ const ProductSchema = new mongoose.Schema({
   category: { type: String, required: true, index: true },
   categoryUrdu: { type: String },
   image: { type: String },
+  videoUrl: { type: String },
+  videoType: { type: String },
   descriptionUrdu: { type: String },
   descriptionEnglish: { type: String },
   stock: { type: Number, default: 50, index: true },

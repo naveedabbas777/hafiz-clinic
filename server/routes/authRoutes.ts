@@ -145,6 +145,129 @@ router.post('/login', async (req: Request, res: Response) => {
       });
     }
 
+    // IPD & Ward In-Charge
+    if (['ward_incharge', 'ward', 'ipd_manager', 'ipd'].includes(loginLower) && (passwordInput === 'ward123' || passwordInput === 'admin123')) {
+      const token = jwt.sign({ userId: 'staff-ward-1', role: 'ipd_incharge', name: 'Sister Shamaila Akhtar' }, JWT_SECRET, { expiresIn: '7d' });
+      return res.json({
+        success: true,
+        token,
+        user: {
+          id: 'staff-ward-1',
+          name: 'Sister Shamaila Akhtar',
+          fullName: 'Sister Shamaila Akhtar (سسٹر شمائلہ اختر)',
+          username: 'ward_incharge',
+          role: 'ipd_incharge',
+          department: 'In-Patient Department (IPD) & Ward Management',
+        },
+      });
+    }
+
+    // Pharmacist & POS Manager
+    if (['pharmacist', 'pharmacy', 'pharmacy1'].includes(loginLower) && (passwordInput === 'pharmacy123' || passwordInput === 'pharm123' || passwordInput === 'admin123')) {
+      const token = jwt.sign({ userId: 'staff-pharm-1', role: 'pharmacist', name: 'Dr. Muhammad Bilal Ansari' }, JWT_SECRET, { expiresIn: '7d' });
+      return res.json({
+        success: true,
+        token,
+        user: {
+          id: 'staff-pharm-1',
+          name: 'Dr. Muhammad Bilal Ansari',
+          fullName: 'Dr. Muhammad Bilal Ansari (Pharm-D)',
+          username: 'pharmacist',
+          role: 'pharmacist',
+          department: 'Central Pharmacy & POS Dispensing',
+        },
+      });
+    }
+
+    // Nursing Station Staff Nurse
+    if (['nurse1', 'nurse', 'nursing_station'].includes(loginLower) && (passwordInput === 'nurse123' || passwordInput === 'admin123')) {
+      const token = jwt.sign({ userId: 'staff-nurse-1', role: 'nurse', name: 'Staff Nurse Fouzia Parveen' }, JWT_SECRET, { expiresIn: '7d' });
+      return res.json({
+        success: true,
+        token,
+        user: {
+          id: 'staff-nurse-1',
+          name: 'Staff Nurse Fouzia Parveen',
+          fullName: 'Staff Nurse Fouzia Parveen (نرس فوزیہ پروین)',
+          username: 'nurse1',
+          role: 'nurse',
+          department: 'Inpatient Nursing Station & Care Unit',
+        },
+      });
+    }
+
+    // Lab Doctor - Radiologist (X-Ray)
+    if (['dr_xray', 'xray', 'radiologist'].includes(loginLower) && (passwordInput === 'lab123' || passwordInput === 'xray123' || passwordInput === 'doc123' || passwordInput === 'admin123')) {
+      const token = jwt.sign({ userId: 'staff-lab-xray', role: 'lab_doctor', name: 'Dr. Tariq Mehmood' }, JWT_SECRET, { expiresIn: '7d' });
+      return res.json({
+        success: true,
+        token,
+        user: {
+          id: 'staff-lab-xray',
+          name: 'Dr. Tariq Mehmood',
+          fullName: 'Dr. Tariq Mehmood (Consultant Radiologist)',
+          username: 'dr_xray',
+          role: 'lab_doctor',
+          department: 'Digital Radiology & X-Ray Imaging',
+          assignedLabCategory: 'Radiology / X-Ray',
+        },
+      });
+    }
+
+    // Lab Doctor - Pathologist (Blood / CBC / LFT / RFT)
+    if (['dr_pathology', 'pathologist', 'pathology', 'lab_doctor'].includes(loginLower) && (passwordInput === 'lab123' || passwordInput === 'path123' || passwordInput === 'doc123' || passwordInput === 'admin123')) {
+      const token = jwt.sign({ userId: 'staff-lab-pathology', role: 'lab_doctor', name: 'Dr. Saima Rehman' }, JWT_SECRET, { expiresIn: '7d' });
+      return res.json({
+        success: true,
+        token,
+        user: {
+          id: 'staff-lab-pathology',
+          name: 'Dr. Saima Rehman',
+          fullName: 'Dr. Saima Rehman (Consultant Pathologist)',
+          username: 'dr_pathology',
+          role: 'lab_doctor',
+          department: 'Pathology & Blood Diagnostics',
+          assignedLabCategory: 'Hematology / CBC',
+        },
+      });
+    }
+
+    // Lab Doctor - Optometrist (Eye Diagnostics & Scans)
+    if (['dr_eye', 'optometrist', 'eye_doctor'].includes(loginLower) && (passwordInput === 'eye123' || passwordInput === 'lab123' || passwordInput === 'doc123' || passwordInput === 'admin123')) {
+      const token = jwt.sign({ userId: 'staff-lab-eye', role: 'lab_doctor', name: 'Dr. Asim Farooq' }, JWT_SECRET, { expiresIn: '7d' });
+      return res.json({
+        success: true,
+        token,
+        user: {
+          id: 'staff-lab-eye',
+          name: 'Dr. Asim Farooq',
+          fullName: 'Dr. Asim Farooq (Consultant Optometrist)',
+          username: 'dr_eye',
+          role: 'lab_doctor',
+          department: 'Computerized Vision & Eye Diagnostic Lab',
+          assignedLabCategory: 'Computerized Eye Scan',
+        },
+      });
+    }
+
+    // Lab Doctor - Sonologist (Ultrasound)
+    if (['dr_ultrasound', 'sonologist', 'ultrasound'].includes(loginLower) && (passwordInput === 'lab123' || passwordInput === 'usg123' || passwordInput === 'admin123')) {
+      const token = jwt.sign({ userId: 'staff-lab-ultrasound', role: 'lab_doctor', name: 'Dr. Farhana Chaudhry' }, JWT_SECRET, { expiresIn: '7d' });
+      return res.json({
+        success: true,
+        token,
+        user: {
+          id: 'staff-lab-ultrasound',
+          name: 'Dr. Farhana Chaudhry',
+          fullName: 'Dr. Farhana Chaudhry (Consultant Sonologist)',
+          username: 'dr_ultrasound',
+          role: 'lab_doctor',
+          department: 'Ultrasound & Sonology',
+          assignedLabCategory: 'Ultrasound & Imaging',
+        },
+      });
+    }
+
     // Patient 1 & 2 Demo or In-Memory users
     if (['patient1', 'patient', 'mrn-84920', 'farooq@example.com'].includes(loginLower) && ['patient123', 'patient1', 'patient', 'pass123'].includes(passwordInput)) {
       const pUser = inMemoryUsers[0];

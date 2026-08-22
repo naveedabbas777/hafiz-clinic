@@ -18,6 +18,7 @@ import reportRoutes from './server/routes/reportRoutes';
 import uploadRoutes from './server/routes/uploadRoutes';
 import callRoutes from './server/routes/callRoutes';
 import slipRoutes from './server/routes/slipRoutes';
+import erpRoutes from './server/routes/erpRoutes';
 
 const PORT = 3000;
 
@@ -46,6 +47,7 @@ async function startServer() {
   app.use('/api/upload', uploadRoutes);
   app.use('/api/calls', callRoutes);
   app.use('/api/slips', slipRoutes);
+  app.use('/api/erp', erpRoutes);
 
   // Vite Development / Production SPA Middleware
   if (process.env.NODE_ENV !== 'production') {

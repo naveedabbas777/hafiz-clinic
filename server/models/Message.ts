@@ -10,9 +10,10 @@ export interface IMessage extends mongoose.Document {
   text: string;
   attachmentUrl?: string;
   audioUrl?: string;
-  audioDuration?: number;
+  audioDuration?: number | string;
   documentType?: string;
   reportId?: string;
+  digitalSlip?: any;
   read?: boolean;
   createdAt?: Date;
 }
@@ -31,6 +32,7 @@ const MessageSchema = new mongoose.Schema({
   audioDuration: { type: String },
   documentType: { type: String },
   reportId: { type: String },
+  digitalSlip: { type: mongoose.Schema.Types.Mixed },
   read: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
 });

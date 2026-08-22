@@ -1,6 +1,27 @@
 import React, { useState } from 'react';
-import { Phone, MessageCircle, Calendar, ShoppingCart, User, ShieldCheck, FileText, Menu, X, Globe, Stethoscope, Lock } from 'lucide-react';
-import { ClinicSettings } from '../types';
+import {
+  Phone,
+  MessageCircle,
+  Calendar,
+  ShoppingCart,
+  User,
+  ShieldCheck,
+  FileText,
+  Menu,
+  X,
+  Globe,
+  Stethoscope,
+  Lock,
+  Layers,
+  Bed,
+  Heart,
+  Activity,
+  Radio,
+  ChevronDown,
+  Sparkles,
+  KeyRound,
+} from 'lucide-react';
+import { ClinicSettings, StaffUser } from '../types';
 
 interface HeaderProps {
   settings: ClinicSettings;
@@ -11,8 +32,9 @@ interface HeaderProps {
   onOpenCart: () => void;
   language: 'urdu' | 'english';
   setLanguage: (lang: 'urdu' | 'english') => void;
-  currentUser?: any;
+  currentUser?: StaffUser | any;
   onLogout?: () => void;
+  onLogin?: (user: StaffUser) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -26,8 +48,10 @@ export const Header: React.FC<HeaderProps> = ({
   setLanguage,
   currentUser,
   onLogout,
+  onLogin,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isStaffMenuDropdownOpen, setIsStaffMenuDropdownOpen] = useState(false);
 
   const navLinks = [
     { id: 'home', labelUrdu: 'ہوم', labelEnglish: 'Home' },
@@ -37,36 +61,33 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'eyecare', labelUrdu: 'آئی کیئر (چشمے)', labelEnglish: 'Eye Care' },
     { id: 'hairoil', labelUrdu: 'ہیئر آئل', labelEnglish: 'Hair Oil' },
     { id: 'beautycream', labelUrdu: 'بیوٹی کریم', labelEnglish: 'Beauty Care' },
-    { id: 'perfumes', labelUrdu: 'پرفیوم کلیکشن', labelEnglish: 'Perfumes' },
     { id: 'physio', labelUrdu: 'فزیوتھراپی', labelEnglish: 'Physiotherapy' },
     { id: 'lab-reports', labelUrdu: 'لیب رپورٹس', labelEnglish: 'Lab Reports' },
-    { id: 'delivery', labelUrdu: 'ہوم ڈیلیوری', labelEnglish: 'Delivery' },
     { id: 'store', labelUrdu: 'آن لائن اسٹور', labelEnglish: 'Store' },
     { id: 'patient-portal', labelUrdu: 'مریض پورٹل', labelEnglish: 'Patient Portal' },
-    { id: 'doctor-portal', labelUrdu: 'ڈاکٹر پورٹل', labelEnglish: 'Doctor Panel' },
+    { id: 'staff-portals', labelUrdu: '🏥 عملہ و شعبہ جاتی پورٹلز', labelEnglish: '🏥 Staff Hub' },
     { id: 'gallery', labelUrdu: 'گیلری', labelEnglish: 'Gallery' },
     { id: 'faq', labelUrdu: 'سوالات', labelEnglish: 'FAQ' },
     { id: 'articles', labelUrdu: 'بلاگ', labelEnglish: 'Blog' },
     { id: 'contact', labelUrdu: 'رابطہ', labelEnglish: 'Contact' },
-    { id: 'legal', labelUrdu: 'قوانین و پالیسی', labelEnglish: 'Legal' },
-    { id: 'seo', labelUrdu: 'SEO', labelEnglish: 'SEO' },
   ];
 
   const handleNavClick = (id: string) => {
     setActiveView(id);
     setMobileMenuOpen(false);
+    setIsStaffMenuDropdownOpen(false);
   };
 
   return (
     <header className="sticky top-0 z-40 bg-white shadow-md border-b border-emerald-100">
       {/* Top Banner Bar */}
-      <div className="bg-gradient-to-r from-emerald-900 via-teal-950 to-emerald-900 text-white py-2 px-4 text-xs md:text-sm" dir="ltr">
+      <div className="bg-gradient-to-r from-emerald-950 via-teal-950 to-slate-950 text-white py-2 px-4 text-xs md:text-sm" dir="ltr">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-2">
           {/* Left / Accreditation */}
           <div className="flex items-center gap-2 font-medium">
-            <span className="bg-amber-400 text-emerald-950 px-2 py-0.5 rounded font-bold text-xs flex items-center gap-1">
+            <span className="bg-amber-400 text-emerald-950 px-2.5 py-0.5 rounded-full font-black text-xs flex items-center gap-1 shadow-sm">
               <ShieldCheck className="w-3.5 h-3.5" />
-              {language === 'urdu' ? 'پنجاب ہیلتھ کیئر کمیشن سے منظور شدہ' : 'PHC Approved Clinic'}
+              {language === 'urdu' ? 'پنجاب ہیلتھ کیئر کمیشن منظور شدہ' : 'PHC Approved Hospital'}
             </span>
             <span className="hidden sm:inline text-emerald-200">|</span>
             <span className="hidden sm:inline text-emerald-100 text-xs">
@@ -78,7 +99,7 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="flex items-center gap-3">
             <a
               href={`tel:${settings.phone1}`}
-              className="flex items-center gap-1 hover:text-amber-300 transition-colors bg-emerald-800/60 px-2.5 py-1 rounded text-xs"
+              className="flex items-center gap-1 hover:text-amber-300 transition-colors bg-emerald-800/60 px-2.5 py-1 rounded-lg text-xs"
             >
               <Phone className="w-3.5 h-3.5 text-amber-300" />
               <span>{settings.phone1}</span>
@@ -87,16 +108,16 @@ export const Header: React.FC<HeaderProps> = ({
               href={`https://wa.me/${settings.whatsappNumber}`}
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-1 text-emerald-300 hover:text-white bg-emerald-700/80 px-2.5 py-1 rounded text-xs font-semibold"
+              className="flex items-center gap-1 text-emerald-300 hover:text-white bg-emerald-700/80 px-2.5 py-1 rounded-lg text-xs font-semibold"
             >
               <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
               <span>WhatsApp Order</span>
             </a>
             <button
               onClick={() => setLanguage(language === 'urdu' ? 'english' : 'urdu')}
-              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-2 py-0.5 rounded text-xs text-amber-200 border border-amber-300/30"
+              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded-lg text-xs text-amber-200 border border-amber-300/30 font-bold"
             >
-              <Globe className="w-3 h-3" />
+              <Globe className="w-3.5 h-3.5" />
               {language === 'urdu' ? 'English' : 'اردو'}
             </button>
           </div>
@@ -110,20 +131,20 @@ export const Header: React.FC<HeaderProps> = ({
           onClick={() => setActiveView('home')}
           className="flex items-center gap-3 cursor-pointer group"
         >
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-800 flex items-center justify-center text-white shadow-md shadow-emerald-700/20 group-hover:scale-105 transition-transform">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-800 flex items-center justify-center text-white shadow-md shadow-emerald-700/20 group-hover:scale-105 transition-transform">
             <Stethoscope className="w-7 h-7" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-black text-emerald-950 tracking-tight font-sans">
+              <h1 className="text-xl sm:text-2xl font-black text-emerald-950 tracking-tight font-sans">
                 {settings.clinicNameUrdu}
               </h1>
-              <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+              <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 hidden sm:inline">
                 {settings.clinicNameEnglish}
               </span>
             </div>
-            <p className="text-xs text-gray-500 font-medium">
-              ڈاکٹر زیشان چوہدری (MBBS) • ڈاکٹر وقاص صغیر (MBBS)
+            <p className="text-xs text-gray-500 font-medium font-urdu">
+              ڈاکٹر زیشان چوہدری (MBBS) • ڈاکٹر وقاص صغیر (MBBS) • مستند سپیشلسٹ میڈیکل سٹاف
             </p>
           </div>
         </div>
@@ -132,7 +153,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="hidden lg:flex items-center gap-3">
           <button
             onClick={onOpenCart}
-            className="relative flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 px-3.5 py-2 rounded-lg font-bold text-xs border border-emerald-200 transition-colors"
+            className="relative flex items-center gap-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 px-3.5 py-2 rounded-xl font-bold text-xs border border-emerald-200 transition-colors"
           >
             <ShoppingCart className="w-4 h-4 text-emerald-700" />
             <span>{language === 'urdu' ? 'کارٹ' : 'Cart'}</span>
@@ -145,57 +166,78 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={onOpenAppointment}
-            className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white px-4 py-2 rounded-lg font-bold text-xs shadow-md shadow-emerald-700/20 transition-all hover:scale-[1.02]"
+            className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white px-4 py-2 rounded-xl font-bold text-xs shadow-md shadow-emerald-700/20 transition-all hover:scale-[1.02]"
           >
             <Calendar className="w-4 h-4" />
             <span>{language === 'urdu' ? 'آن لائن اپائنٹمنٹ بک کریں' : 'Book Appointment'}</span>
           </button>
 
-          {/* User Portals Quick Menu */}
-          <div className="flex items-center gap-1.5 pl-2 border-l border-gray-200">
+          {/* Single Unified Staff Hub Button */}
+          <div className="relative flex items-center">
             <button
-              onClick={() => setActiveView('doctor-portal')}
-              title="Official Doctor Portal"
-              className="px-2.5 py-1.5 bg-emerald-900 hover:bg-emerald-950 text-amber-300 hover:text-amber-200 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm border border-emerald-700 transition-all cursor-pointer"
+              onClick={() => setActiveView('staff-portals')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer ${
+                activeView === 'staff-portals'
+                  ? 'bg-emerald-700 text-white ring-2 ring-emerald-500/20'
+                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-950 border border-emerald-300'
+              }`}
+              title="Hospital Staff Master Hub"
             >
-              <Stethoscope className="w-4 h-4 text-emerald-400" />
-              <span>{language === 'urdu' ? 'معالج پورٹل' : 'Doctor Portal'}</span>
+              <Layers className="w-4 h-4 text-emerald-700" />
+              <span>{language === 'urdu' ? 'اسٹاف ہب (Staff Hub)' : 'Staff Hub'}</span>
             </button>
+          </div>
 
+          {/* User Status / Logout */}
+          <div className="flex items-center gap-1.5 pl-2 border-l border-gray-200">
             {currentUser ? (
-              <div className="flex items-center gap-1.5 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-200">
+              <div className="flex items-center gap-1.5 bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-200">
                 <button
-                  onClick={() => setActiveView('patient-portal')}
-                  className="flex items-center gap-1 text-xs font-bold text-emerald-950 hover:underline"
+                  onClick={() => {
+                    if (currentUser.role === 'nurse') setActiveView('nursing-station');
+                    else if (currentUser.role === 'pharmacist') setActiveView('pharmacy-pos');
+                    else if (currentUser.role === 'ipd_incharge') setActiveView('ipd-ward');
+                    else if (currentUser.role === 'lab_doctor') setActiveView('pathology-lab');
+                    else if (currentUser.role === 'doctor') setActiveView('doctor-portal');
+                    else setActiveView('admin');
+                  }}
+                  className="flex items-center gap-1.5 text-xs font-bold text-emerald-950 hover:underline"
                 >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
                   <User className="w-3.5 h-3.5 text-emerald-700" />
                   <span>{currentUser.name || currentUser.username}</span>
+                  <span className="text-[10px] text-emerald-700 bg-emerald-200/60 px-1.5 py-0.5 rounded font-mono font-bold">
+                    {currentUser.role}
+                  </span>
                 </button>
                 <button
-                  onClick={() => { if (onLogout) onLogout(); }}
-                  className="text-[10px] font-bold text-red-600 hover:underline bg-red-100 px-1.5 py-0.5 rounded"
+                  onClick={() => {
+                    if (onLogout) onLogout();
+                  }}
+                  className="text-[10px] font-bold text-rose-700 hover:text-rose-900 bg-rose-100 px-2 py-0.5 rounded-lg"
                   title="Logout"
                 >
-                  خروج
+                  لاگ آؤٹ
                 </button>
               </div>
             ) : (
               <button
                 onClick={() => setActiveView('patient-portal')}
                 title="Patient Portal"
-                className="p-1.5 text-gray-600 hover:text-emerald-700 hover:bg-gray-100 rounded-lg text-xs flex items-center gap-1"
+                className="p-2 text-gray-700 hover:text-emerald-700 hover:bg-gray-100 rounded-xl text-xs flex items-center gap-1 font-semibold"
               >
                 <User className="w-4 h-4" />
-                <span className="text-[11px] font-medium hidden sm:inline">{language === 'urdu' ? 'مریض لاگ ان' : 'Patient Login'}</span>
+                <span className="text-[11px] hidden sm:inline">{language === 'urdu' ? 'مریض لاگ ان' : 'Patient Login'}</span>
               </button>
             )}
+
             <button
               onClick={() => setActiveView('admin')}
-              title="Admin Panel"
-              className="p-1.5 text-gray-600 hover:text-emerald-700 hover:bg-gray-100 rounded-lg text-xs flex items-center gap-1"
+              title="Admin Control"
+              className="p-2 text-gray-700 hover:text-emerald-700 hover:bg-gray-100 rounded-xl text-xs flex items-center gap-1 font-semibold"
             >
               <Lock className="w-4 h-4" />
-              <span className="text-[11px] font-medium hidden sm:inline">{language === 'urdu' ? 'ایڈمن' : 'Admin'}</span>
+              <span className="text-[11px] hidden sm:inline">{language === 'urdu' ? 'ایڈمن' : 'Admin'}</span>
             </button>
           </div>
         </div>
@@ -204,7 +246,7 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-2 lg:hidden">
           <button
             onClick={onOpenCart}
-            className="relative p-2 bg-emerald-100 text-emerald-900 rounded-lg"
+            className="relative p-2 bg-emerald-100 text-emerald-900 rounded-xl"
           >
             <ShoppingCart className="w-5 h-5" />
             {cartCount > 0 && (
@@ -215,7 +257,7 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="p-2 text-gray-700 hover:bg-gray-100 rounded-lg"
+            className="p-2 text-gray-700 hover:bg-gray-100 rounded-xl"
           >
             {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
           </button>
@@ -232,7 +274,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <button
                   key={link.id}
                   onClick={() => handleNavClick(link.id)}
-                  className={`px-3 py-2 rounded-md transition-colors whitespace-nowrap ${
+                  className={`px-3 py-2 rounded-xl transition-colors whitespace-nowrap ${
                     isActive
                       ? 'bg-emerald-600 text-white shadow-sm'
                       : 'hover:bg-slate-800 text-slate-200 hover:text-emerald-300'
@@ -246,11 +288,11 @@ export const Header: React.FC<HeaderProps> = ({
 
           <div className="flex items-center gap-2 py-1.5 border-r border-slate-800 pr-3">
             <button
-              onClick={() => setActiveView('doctor-portal')}
-              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded border border-slate-700 text-xs flex items-center gap-1"
+              onClick={() => setActiveView('staff-portals')}
+              className="px-3 py-1 bg-gradient-to-r from-emerald-700 to-teal-800 hover:opacity-90 text-white rounded-xl border border-emerald-500/40 text-xs flex items-center gap-1.5 shadow"
             >
-              <Stethoscope className="w-3.5 h-3.5" />
-              <span>{language === 'urdu' ? 'ڈاکٹر پینل' : 'Doctor Portal'}</span>
+              <Layers className="w-3.5 h-3.5 text-amber-300" />
+              <span>{language === 'urdu' ? 'پورٹلز سینٹر (8 شعبہ جات)' : '8 Portals Hub'}</span>
             </button>
           </div>
         </div>
@@ -265,19 +307,19 @@ export const Header: React.FC<HeaderProps> = ({
                 onOpenAppointment();
                 setMobileMenuOpen(false);
               }}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-3 rounded text-xs flex items-center justify-center gap-1"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1 shadow"
             >
               <Calendar className="w-4 h-4" />
               <span>اپائنٹمنٹ بک کریں</span>
             </button>
           </div>
 
-          <div className="grid grid-cols-2 gap-1.5 pt-2 border-t border-slate-800">
+          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">
             {navLinks.map((link) => (
               <button
                 key={link.id}
                 onClick={() => handleNavClick(link.id)}
-                className={`text-right py-2 px-3 rounded text-xs font-semibold ${
+                className={`text-right py-2 px-3 rounded-xl text-xs font-semibold ${
                   activeView === link.id
                     ? 'bg-emerald-600 text-white'
                     : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
@@ -288,22 +330,26 @@ export const Header: React.FC<HeaderProps> = ({
             ))}
           </div>
 
-          <div className="pt-2 border-t border-slate-800 flex justify-between gap-2 text-xs">
+          <div className="pt-3 border-t border-slate-800 grid grid-cols-1 gap-2 text-xs">
+            <button
+              onClick={() => handleNavClick('staff-portals')}
+              className="w-full bg-emerald-700 hover:bg-emerald-600 py-2.5 rounded-xl text-center text-white font-bold flex items-center justify-center gap-2 shadow"
+            >
+              <Layers className="w-4 h-4 text-amber-300" />
+              <span>{language === 'urdu' ? 'اسٹاف ہب (Staff Hub) — تمام شعبہ جات' : 'Staff Hub — Departmental Gateway'}</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 text-xs">
             <button
               onClick={() => handleNavClick('patient-portal')}
-              className="flex-1 bg-slate-800 py-2 rounded text-center text-emerald-300"
+              className="bg-slate-800 py-2.5 rounded-xl text-center text-emerald-300 font-bold"
             >
               {language === 'urdu' ? 'مریض پورٹل' : 'Patient Portal'}
             </button>
             <button
-              onClick={() => handleNavClick('doctor-portal')}
-              className="flex-1 bg-slate-800 py-2 rounded text-center text-amber-300"
-            >
-              {language === 'urdu' ? 'ڈاکٹر پینل' : 'Doctor Portal'}
-            </button>
-            <button
               onClick={() => handleNavClick('admin')}
-              className="flex-1 bg-slate-800 py-2 rounded text-center text-slate-300"
+              className="bg-slate-800 py-2.5 rounded-xl text-center text-slate-300 font-bold"
             >
               {language === 'urdu' ? 'ایڈمن پینل' : 'Admin Panel'}
             </button>

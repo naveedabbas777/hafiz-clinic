@@ -5,7 +5,9 @@ export interface IUser extends mongoose.Document {
   email: string;
   username: string;
   password?: string;
-  role: 'patient' | 'doctor' | 'admin';
+  role: 'patient' | 'doctor' | 'admin' | 'nurse' | 'ipd_incharge' | 'pharmacist' | 'lab_doctor' | 'receptionist';
+  department?: string;
+  assignedLabCategory?: string;
   phone?: string;
   city?: string;
   address?: string;
@@ -22,7 +24,9 @@ const UserSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true, index: true },
   username: { type: String, required: true, unique: true, index: true },
   password: { type: String, required: true },
-  role: { type: String, enum: ['patient', 'doctor', 'admin'], default: 'patient', index: true },
+  role: { type: String, enum: ['patient', 'doctor', 'admin', 'nurse', 'ipd_incharge', 'pharmacist', 'lab_doctor', 'receptionist'], default: 'patient', index: true },
+  department: { type: String },
+  assignedLabCategory: { type: String },
   phone: { type: String, index: true },
   city: { type: String },
   address: { type: String },

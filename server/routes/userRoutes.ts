@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { User } from '../models/User';
 import { Appointment } from '../models/Appointment';
 import { getMongoConnectedStatus } from '../config/db';
+import { deleteFromCloudinary } from '../config/cloudinary';
 
 const router = Router();
 
@@ -140,11 +141,26 @@ router.put('/:id', async (req: Request, res: Response) => {
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    const imageUrl = req.body?.imageUrl || (req.query?.imageUrl as string);
+
     if (getMongoConnectedStatus()) {
+      const user = await User.findById(id) || await User.findOne({ username: id });
+      const targetImage = (user as any)?.image || (user as any)?.avatar || imageUrl;
+      if (targetImage) {
+        await deleteFromCloudinary(targetImage);
+      }
       await User.findByIdAndDelete(id);
+      await User.findOneAndDelete({ username: id });
+    } else {
+      const user = inMemoryUsers.find((u) => u.id === id || u._id === id || u.username === id);
+      const targetImage = user?.image || user?.avatar || imageUrl;
+      if (targetImage) {
+        await deleteFromCloudinary(targetImage);
+      }
     }
-    inMemoryUsers = inMemoryUsers.filter((u) => u.id !== id && u._id !== id);
-    return res.json({ success: true, message: 'User deleted successfully.' });
+
+    inMemoryUsers = inMemoryUsers.filter((u) => u.id !== id && u._id !== id && u.username !== id);
+    return res.json({ success: true, message: 'User and Cloudinary profile assets deleted successfully.' });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }

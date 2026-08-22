@@ -1,7 +1,50 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Paperclip, FileText, User, Search, Phone, Video, Mic, X, ExternalLink, ShieldCheck, FileCheck, Lock, ArrowLeft, Play, Pause, Trash2, Download, CheckCheck, MicOff, VideoOff, PhoneOff, Volume2, VolumeX, Smartphone, ChevronDown, MessageSquare } from 'lucide-react';
-import { Doctor } from '../types';
-import { getMessagesApi, sendMessageApi, createReportApi, uploadDiseaseImageApi, getUsersApi, getActiveCallApi, startCallApi, acceptCallApi, declineCallApi, endCallApi, sendCallSignalApi, getCallSignalsApi } from '../services/api';
+import {
+  Send,
+  Paperclip,
+  FileText,
+  User,
+  Search,
+  Phone,
+  Video,
+  Mic,
+  X,
+  ExternalLink,
+  ShieldCheck,
+  FileCheck,
+  Lock,
+  ArrowLeft,
+  Play,
+  Pause,
+  Trash2,
+  Download,
+  CheckCheck,
+  MicOff,
+  VideoOff,
+  PhoneOff,
+  Volume2,
+  VolumeX,
+  Smartphone,
+  ChevronDown,
+  MessageSquare,
+  Receipt,
+  Printer,
+  Share2,
+  Copy,
+  Check,
+  Pill,
+  FlaskConical,
+  Stethoscope,
+  Activity,
+  Eye,
+  Sparkles,
+  Plus,
+  Calendar,
+  DollarSign,
+  QrCode,
+} from 'lucide-react';
+import { Doctor, DigitalSlipData, DigitalSlipItem } from '../types';
+import { getMessagesApi, sendMessageApi, createReportApi, uploadDiseaseImageApi, getUsersApi, getActiveCallApi, startCallApi, acceptCallApi, declineCallApi, endCallApi, sendCallSignalApi, getCallSignalsApi, deleteMessageApi, clearConversationMessagesApi } from '../services/api';
 
 // WAV Base64 Audio Generator for permanent cross-browser voice notes
 function createAudioToneDataUrl(durationSeconds: number = 4): string {
@@ -121,6 +164,7 @@ interface MessageItem {
   audioUrl?: string;
   audioDuration?: string;
   createdAt?: string;
+  digitalSlip?: DigitalSlipData;
 }
 
 interface ContactItem {
@@ -282,6 +326,28 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
   const [showRxModal, setShowRxModal] = useState(false);
   const [rxMedicines, setRxMedicines] = useState('1. شربت شفا صغیر - 2 چمچ صبح شام\n2. حب کبد ہربل - 1 گولی بعد از غذا\n3. معجون مقوی سندر - 1 چمچ رات کو');
   const [rxAdvice, setRxAdvice] = useState('پرہیز: تلی ہوئی اشیاء، ڈرنکس اور بادی اشیاء سے پرہیز کریں۔');
+
+  // Digital Slip Modal & Full Management State
+  const [showSlipModal, setShowSlipModal] = useState(false);
+  const [activeSlipTab, setActiveSlipTab] = useState<'prescription' | 'invoice' | 'lab_token' | 'discharge_summary'>('prescription');
+  const [slipDoctorName, setSlipDoctorName] = useState(userName);
+  const [slipDepartment, setSlipDepartment] = useState('شعبہ او پی ڈی و جنرل کلینک');
+  const [slipDiagnosis, setSlipDiagnosis] = useState('معدہ، جگر و عام جسمانی کمزوری');
+  const [slipInstructions, setSlipInstructions] = useState('کھانے کے بعد ادویات لیں، پانی کا زیادہ استعمال کریں۔');
+  const [slipPrecautions, setSlipPrecautions] = useState('تلی ہوئی اشیاء، ڈرنکس اور بادی کھانوں سے پرہیز کریں۔');
+  const [slipItems, setSlipItems] = useState<DigitalSlipItem[]>([
+    { name: 'شربت شفا صغیر (Syp Shifa Sagheer)', category: 'Medicine', qty: 2, price: 350, dosage: '2 چمچ صبح و شام', instructions: 'بعد از غذا' },
+    { name: 'حب کبد ہربل (Hab-e-Kabad Herbal)', category: 'Medicine', qty: 1, price: 280, dosage: '1 گولی رات کو', instructions: 'ہمراہ نیم گرم پانی' },
+  ]);
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemCategory, setNewItemCategory] = useState('Medicine');
+  const [newItemQty, setNewItemQty] = useState(1);
+  const [newItemPrice, setNewItemPrice] = useState(250);
+  const [newItemDosage, setNewItemDosage] = useState('1+0+1 بعد از غذا');
+  const [slipDiscount, setSlipDiscount] = useState(0);
+  const [slipPaid, setSlipPaid] = useState(980);
+  const [selectedSlipToPrint, setSelectedSlipToPrint] = useState<DigitalSlipData | null>(null);
+  const [copiedSlipId, setCopiedSlipId] = useState<string | null>(null);
 
   // Audio Voice Recorder & Playback State
   const [myOnlineStatus, setMyOnlineStatus] = useState<boolean>(true);
@@ -1186,6 +1252,144 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
     scrollToLatestMessage();
   };
 
+  // DIGITAL SLIP SHARING & MANAGEMENT HANDLERS
+  const handleShareDigitalSlip = (customSlip?: DigitalSlipData) => {
+    const subtotal = slipItems.reduce((acc, it) => acc + ((it.price || 0) * (it.qty || 1)), 0);
+    const grandTotal = Math.max(0, subtotal - slipDiscount);
+    const balance = Math.max(0, grandTotal - slipPaid);
+
+    const generatedSlipNumber = `SLIP-${Date.now().toString().slice(-6)}`;
+
+    const slipPayload: DigitalSlipData = customSlip || {
+      slipType: activeSlipTab,
+      slipNumber: generatedSlipNumber,
+      patientName: activeContact.nameUrdu || activeContact.nameEnglish,
+      patientPhone: activeContact.phone || '0300-1234567',
+      mrnNumber: activeContact.qualification || 'MRN-84920',
+      doctorName: isDoctor ? userName : (activeContact.role === 'doctor' ? activeContact.nameUrdu : 'ڈاکٹر زیشان چوہدری'),
+      department: slipDepartment,
+      date: new Date().toLocaleDateString('ur-PK'),
+      timeSlot: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      tokenNumber: Math.floor(Math.random() * 40) + 1,
+      diagnosis: slipDiagnosis,
+      instructions: slipInstructions,
+      precautions: slipPrecautions,
+      items: slipItems,
+      subtotal,
+      discount: slipDiscount,
+      totalAmount: grandTotal,
+      paidAmount: slipPaid,
+      balanceAmount: balance,
+      status: balance === 0 ? 'مکمل ادا شدہ (Paid)' : 'واجب الادا (Partial/Unpaid)',
+      verifiedBy: userName,
+    };
+
+    const typeTitle =
+      slipPayload.slipType === 'prescription'
+        ? '💊 ڈیجیٹل نسخہ (Rx)'
+        : slipPayload.slipType === 'lab_token'
+        ? '🔬 لیب و ٹیسٹنگ ٹوکن'
+        : slipPayload.slipType === 'discharge_summary'
+        ? '🏥 ڈسچارج سمری و حتمی بل'
+        : '🧾 او پی ڈی فیس سلپ';
+
+    const newMsg: MessageItem = {
+      id: `slip_${Date.now()}`,
+      senderId: userId,
+      senderName: userName,
+      senderRole: isDoctor ? 'doctor' : 'patient',
+      receiverId: activeContact.id,
+      receiverName: isUrdu ? activeContact.nameUrdu : (activeContact.nameEnglish || activeContact.nameUrdu),
+      receiverRole: activeContact.role,
+      text: `🧾 ${typeTitle}: نمبر #${slipPayload.slipNumber} جاری کر دی گئی ہے۔ تمام تفاصیل نیچے منسلک ہیں۔`,
+      digitalSlip: slipPayload,
+      documentType: typeTitle,
+      createdAt: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, newMsg]);
+    sendMessageApi(newMsg).catch(() => {});
+    setShowSlipModal(false);
+    scrollToLatestMessage(true);
+  };
+
+  const handleShareSlipToWhatsApp = (slip: DigitalSlipData) => {
+    try {
+      const typeLabel =
+        slip.slipType === 'prescription'
+          ? '💊 ڈیجیٹل نسخہ Rx'
+          : slip.slipType === 'lab_token'
+          ? '🔬 لیبارٹری و ریڈیالوجی ٹوکن'
+          : slip.slipType === 'discharge_summary'
+          ? '🏥 ڈسچارج بل'
+          : '🧾 او پی ڈی سلپ';
+
+      const itemsText = (slip.items || [])
+        .map((it, i) => `${i + 1}. *${it.name}* ${it.dosage ? `(${it.dosage})` : ''} - تعداد: ${it.qty || 1} | رقم: Rs. ${((it.price || 0) * (it.qty || 1)).toLocaleString()}`)
+        .join('\n');
+
+      const waText =
+`🏥 *حافظ کلینک اینڈ ڈائیگنوسٹک سینٹر*
+━━━━━━━━━━━━━━━━━━━━
+${typeLabel}: *#${slip.slipNumber}*
+📅 تاریخ: ${slip.date} | وقت: ${slip.timeSlot || '11:00 AM'}
+👤 مریض کا نام: *${slip.patientName}*
+👨‍⚕️ معالج / شعبہ: ${slip.doctorName || slip.department || 'او پی ڈی'}
+🔖 ٹوکن نمبر: #${slip.tokenNumber || '12'}
+
+📋 *تجویز کردہ ادویات / چارجز:*
+${itemsText || 'تفصیلات کلینک ریکارڈ میں درج ہیں۔'}
+
+💰 *مالی تفصیلات:*
+• کل رقم (Total): Rs. ${(slip.totalAmount || 0).toLocaleString()}
+• ادا شدہ رقم (Paid): Rs. ${(slip.paidAmount || 0).toLocaleString()}
+• بقایا (Balance): Rs. ${(slip.balanceAmount || 0).toLocaleString()}
+• کیفیت: ${slip.status || 'Verified'}
+
+📌 *طبی مشورہ و پرہیز:*
+${slip.instructions || 'ادویات وقت پر لیں اور پرہیز کا خیال رکھیں۔'}
+${slip.precautions ? `پرہیز: ${slip.precautions}` : ''}
+
+━━━━━━━━━━━━━━━━━━━━
+📞 ہیلپ لائن: 0300-1234567 | حافظ کلینک`;
+
+      const cleanPhone = (slip.patientPhone || activeContact.phone || '').replace(/[^0-9]/g, '');
+      const targetPhone = cleanPhone.startsWith('92') ? cleanPhone : cleanPhone.startsWith('0') ? '92' + cleanPhone.slice(1) : '92' + cleanPhone;
+      
+      const waUrl = cleanPhone
+        ? `https://api.whatsapp.com/send?phone=${targetPhone}&text=${encodeURIComponent(waText)}`
+        : `https://api.whatsapp.com/send?text=${encodeURIComponent(waText)}`;
+
+      window.open(waUrl, '_blank');
+    } catch (e) {
+      alert('واٹس ایپ لنک کھولنے میں خرابی پیش آئی۔');
+    }
+  };
+
+  const handleCopySlipText = (slip: DigitalSlipData) => {
+    try {
+      const itemsText = (slip.items || [])
+        .map((it, i) => `${i + 1}. ${it.name} ${it.dosage ? `(${it.dosage})` : ''} - Qty: ${it.qty || 1} - Rs. ${((it.price || 0) * (it.qty || 1)).toLocaleString()}`)
+        .join('\n');
+
+      const plainText =
+`🏥 حافظ کلینک اینڈ ڈائیگنوسٹک سینٹر
+سلپ نمبر: #${slip.slipNumber}
+مریض: ${slip.patientName} | تاریخ: ${slip.date}
+معالج: ${slip.doctorName || 'ڈاکٹر زیشان چوہدری'} | شعبہ: ${slip.department || 'او پی ڈی'}
+
+تفاصیل:
+${itemsText}
+
+کل رقم: Rs. ${(slip.totalAmount || 0).toLocaleString()} | ادا شدہ: Rs. ${(slip.paidAmount || 0).toLocaleString()}
+ہدایات: ${slip.instructions || 'کوئی خاص ہدایت نہیں'}`;
+
+      navigator.clipboard.writeText(plainText);
+      setCopiedSlipId(slip.slipNumber);
+      setTimeout(() => setCopiedSlipId(null), 2500);
+    } catch (e) {}
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1213,6 +1417,26 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
     } finally {
       setIsUploading(false);
     }
+  };
+
+  const handleDeleteMessage = async (msg: MessageItem) => {
+    const confirmText = isUrdu
+      ? 'کیا آپ یہ پیغام اور اس کے ساتھ منسلک فائل / وائس نوٹ ڈیلیٹ کرنا چاہتے ہیں؟ (Cloudinary سے بھی حذف ہو جائے گی)'
+      : 'Delete this message and purge attached file/audio from Cloudinary?';
+    if (!window.confirm(confirmText)) return;
+
+    setMessages((prev) => prev.filter((m) => m.id !== msg.id && (m as any)._id !== msg.id));
+    await deleteMessageApi(msg.id || (msg as any)._id, msg.attachmentUrl, msg.audioUrl).catch(() => {});
+  };
+
+  const handleClearConversation = async () => {
+    const confirmText = isUrdu
+      ? `کیا آپ ${activeContact.nameUrdu || activeContact.nameEnglish} کے ساتھ تمام پیغامات، وائس نوٹس اور منسلکہ تصاویر/فائلیں مکمل ڈیلیٹ کرنا چاہتے ہیں؟`
+      : `Clear this entire conversation and delete all attached files/audios from Cloudinary?`;
+    if (!window.confirm(confirmText)) return;
+
+    setMessages([]);
+    await clearConversationMessagesApi(userId, activeContact.id).catch(() => {});
   };
 
   const filteredContacts = allContacts.filter((c) => {
@@ -1409,6 +1633,17 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
 
           {/* Header Action Buttons */}
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+            {/* Digital Slip Sharing Button */}
+            <button
+              onClick={() => setShowSlipModal(true)}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white font-black px-2.5 sm:px-3 py-1.5 rounded-xl text-[10px] sm:text-xs flex items-center gap-1 shadow-md transition-all active:scale-95 border border-emerald-400/30"
+              title="مریض کو ڈیجیٹل سلپ، نسخہ یا ٹیسٹ ٹوکن بھیجیں"
+            >
+              <Receipt className="w-3.5 h-3.5 text-amber-300" />
+              <span className="hidden sm:inline">{isUrdu ? '🧾 سلپ شیئر کریں' : '🧾 Share Slip'}</span>
+              <span className="sm:hidden">سلپ</span>
+            </button>
+
             {isDoctor && (
               <button
                 onClick={() => setShowRxModal(true)}
@@ -1433,6 +1668,17 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
             >
               <Video className="w-4 h-4 text-emerald-200" />
             </button>
+
+            {messages.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearConversation}
+                className="p-2 bg-emerald-950/80 hover:bg-rose-700 text-emerald-200 hover:text-white rounded-full transition-colors border border-emerald-800 active:scale-95 ml-1"
+                title={isUrdu ? "گفتگو اور تمام میڈیا فائلیں مکمل ڈیلیٹ کریں" : "Clear conversation & media"}
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -1493,6 +1739,177 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
                   {msg.text && (
                     <p className="whitespace-pre-wrap leading-relaxed text-xs sm:text-xs font-medium break-words">{msg.text}</p>
                   )}
+
+                  {/* DIGITAL SLIP ATTACHMENT CARD */}
+                  {msg.digitalSlip && (() => {
+                    const slip = msg.digitalSlip;
+                    const isPrescription = slip.slipType === 'prescription';
+                    const isLab = slip.slipType === 'lab_token' || slip.slipType === 'diagnostic_appointment';
+                    const isDischarge = slip.slipType === 'discharge_summary';
+                    
+                    return (
+                      <div className={`p-3 sm:p-4 rounded-2xl border space-y-3 mt-1.5 w-full min-w-[260px] sm:min-w-[340px] text-slate-900 shadow-md ${
+                        isMe ? 'bg-emerald-950/95 border-emerald-500/50 text-white' : 'bg-slate-50 border-emerald-300 text-slate-900'
+                      }`}>
+                        {/* Top Slip Badge Header */}
+                        <div className="flex items-center justify-between border-b pb-2 gap-2 border-emerald-500/30">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className={`p-2 rounded-xl text-white shrink-0 ${
+                              isPrescription ? 'bg-emerald-600' : isLab ? 'bg-amber-600' : isDischarge ? 'bg-indigo-600' : 'bg-teal-600'
+                            }`}>
+                              {isPrescription ? <Pill className="w-5 h-5" /> : isLab ? <FlaskConical className="w-5 h-5" /> : isDischarge ? <Activity className="w-5 h-5" /> : <Receipt className="w-5 h-5" />}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider ${
+                                  isMe ? 'bg-amber-400 text-slate-950' : 'bg-emerald-800 text-amber-300'
+                                }`}>
+                                  {isPrescription ? '💊 میڈیکل نسخہ Rx' : isLab ? '🔬 لیب و ٹیسٹ رسید' : isDischarge ? '🏥 ڈسچارج بل' : '🧾 او پی ڈی سلپ'}
+                                </span>
+                                <span className="font-mono text-[11px] font-black opacity-90 truncate">
+                                  #{slip.slipNumber}
+                                </span>
+                              </div>
+                              <p className={`text-[11px] font-bold truncate mt-0.5 ${isMe ? 'text-emerald-200' : 'text-emerald-900'}`}>
+                                {slip.department || 'حافظ کلینک اینڈ ڈائیگنوسٹک سینٹر'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {slip.tokenNumber && (
+                            <div className="text-center bg-amber-400 text-slate-950 px-2.5 py-1 rounded-xl shadow-xs shrink-0 font-mono">
+                              <div className="text-[8px] font-black uppercase">Token</div>
+                              <div className="text-xs font-black">#{slip.tokenNumber}</div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Patient & Doctor Subheader */}
+                        <div className={`grid grid-cols-2 gap-2 p-2 rounded-xl text-[10px] font-semibold ${
+                          isMe ? 'bg-emerald-900/60 border border-emerald-800 text-emerald-100' : 'bg-white border border-slate-200 text-slate-700'
+                        }`}>
+                          <div>
+                            <span className="opacity-70">مریض کا نام: </span>
+                            <span className="font-bold">{slip.patientName}</span>
+                          </div>
+                          <div className="text-left font-mono">
+                            <span className="opacity-70">تاریخ: </span>
+                            <span>{slip.date}</span>
+                          </div>
+                          {slip.doctorName && (
+                            <div className="col-span-2 flex items-center justify-between border-t border-emerald-700/30 pt-1">
+                              <span><span className="opacity-70">معالج: </span><b>{slip.doctorName}</b></span>
+                              {slip.timeSlot && <span className="font-mono">{slip.timeSlot}</span>}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Diagnosis or Problem */}
+                        {slip.diagnosis && (
+                          <div className={`p-2 rounded-xl text-[11px] font-medium ${
+                            isMe ? 'bg-emerald-900/40 text-emerald-200 border border-emerald-800/40' : 'bg-emerald-50 text-emerald-950 border border-emerald-200'
+                          }`}>
+                            <span className="font-bold text-amber-400 ml-1">تشخیص (Diagnosis):</span>
+                            <span>{slip.diagnosis}</span>
+                          </div>
+                        )}
+
+                        {/* Itemized Table */}
+                        {slip.items && slip.items.length > 0 && (
+                          <div className={`rounded-xl overflow-hidden border ${
+                            isMe ? 'border-emerald-800 bg-emerald-900/30' : 'border-slate-200 bg-white'
+                          }`}>
+                            <div className={`p-1.5 px-2.5 font-bold text-[10px] flex justify-between ${
+                              isMe ? 'bg-emerald-900/80 text-emerald-200' : 'bg-slate-100 text-slate-700'
+                            }`}>
+                              <span>{isPrescription ? 'تجویز کردہ ادویات و خوراک' : 'ٹیسٹ / چارجز کی تفصیل'}</span>
+                              <span>رقم (PKR)</span>
+                            </div>
+                            <div className="divide-y divide-emerald-800/20 text-[11px]">
+                              {slip.items.map((item, itIdx) => (
+                                <div key={itIdx} className="p-2 flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="font-bold truncate">{item.name}</p>
+                                    {item.dosage && (
+                                      <p className={`text-[10px] ${isMe ? 'text-amber-300' : 'text-emerald-700'} font-medium`}>
+                                        خوراک: {item.dosage} {item.instructions ? `(${item.instructions})` : ''}
+                                      </p>
+                                    )}
+                                    {item.qty && item.qty > 1 && (
+                                      <span className="text-[9px] opacity-75 font-mono">تعداد: {item.qty}</span>
+                                    )}
+                                  </div>
+                                  <div className="font-mono font-bold shrink-0 text-right">
+                                    Rs. {((item.price || 0) * (item.qty || 1)).toLocaleString()}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Financial Summary */}
+                        {(slip.totalAmount !== undefined && slip.totalAmount > 0) && (
+                          <div className={`p-2.5 rounded-xl flex items-center justify-between text-xs font-mono font-bold ${
+                            isMe ? 'bg-emerald-900 border border-emerald-700 text-white' : 'bg-emerald-50 border border-emerald-300 text-emerald-950'
+                          }`}>
+                            <div className="space-y-0.5">
+                              <div>کل رقم: Rs. {slip.totalAmount.toLocaleString()}</div>
+                              {slip.discount ? <div className="text-[10px] text-rose-300">رعایت: -Rs. {slip.discount}</div> : null}
+                            </div>
+                            <div className="text-right space-y-0.5">
+                              <div className="text-emerald-400">ادا شدہ: Rs. {(slip.paidAmount || 0).toLocaleString()}</div>
+                              <div className="text-[10px] text-amber-300">بقایا: Rs. {(slip.balanceAmount || 0).toLocaleString()}</div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Advice & Instructions */}
+                        {slip.instructions && (
+                          <div className={`p-2 rounded-xl text-[10px] space-y-0.5 ${
+                            isMe ? 'bg-emerald-900/40 text-emerald-200' : 'bg-slate-100 text-slate-800'
+                          }`}>
+                            <div className="font-bold flex items-center gap-1">
+                              <Sparkles className="w-3 h-3 text-amber-400" />
+                              <span>ڈاکٹر کی ہدایات و پرہیز:</span>
+                            </div>
+                            <p className="leading-relaxed">{slip.instructions}</p>
+                            {slip.precautions && <p className="text-rose-400 font-semibold mt-1">پرہیز: {slip.precautions}</p>}
+                          </div>
+                        )}
+
+                        {/* Interactive Action Buttons */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSlipToPrint(slip)}
+                            className="flex-1 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black py-2 px-2.5 rounded-xl text-[10px] flex items-center justify-center gap-1 shadow-md transition-transform active:scale-95 cursor-pointer"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>پرنٹ سلپ / PDF</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleShareSlipToWhatsApp(slip)}
+                            className="flex-1 bg-teal-600 hover:bg-teal-500 text-white font-bold py-2 px-2.5 rounded-xl text-[10px] flex items-center justify-center gap-1 shadow-md transition-transform active:scale-95 cursor-pointer"
+                          >
+                            <Share2 className="w-3.5 h-3.5" />
+                            <span>واٹس ایپ شیئر</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleCopySlipText(slip)}
+                            className="p-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-transform active:scale-95 cursor-pointer"
+                            title="سلپ ٹیکسٹ کاپی کریں"
+                          >
+                            {copiedSlipId === slip.slipNumber ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* VOICE NOTE AUDIO PLAYER CARD */}
                   {msg.audioUrl && (
@@ -1632,8 +2049,8 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
                     );
                   })()}
 
-                  {/* Message Timestamp & Checkmarks */}
-                  <div className={`flex items-center justify-end gap-1 text-[10px] font-mono pt-0.5 ${
+                  {/* Message Timestamp, Checkmarks & Delete Option */}
+                  <div className={`flex items-center justify-end gap-1.5 text-[10px] font-mono pt-0.5 ${
                     isMe ? 'text-emerald-100' : 'text-slate-500'
                   }`}>
                     <span>
@@ -1642,6 +2059,16 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
                         : '11:42 AM'}
                     </span>
                     {isMe && <CheckCheck className="w-4 h-4 text-amber-300" />}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteMessage(msg)}
+                      className={`p-0.5 rounded transition-all cursor-pointer opacity-70 hover:opacity-100 ${
+                        isMe ? 'text-emerald-200 hover:text-rose-200 hover:bg-emerald-800' : 'text-slate-400 hover:text-rose-600 hover:bg-slate-100'
+                      }`}
+                      title={isUrdu ? 'یہ پیغام اور فائل ڈیلیٹ کریں (Cloudinary Cleanup)' : 'Delete message & Cloudinary media'}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1705,7 +2132,7 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
         )}
 
         {/* Message Input Bar - Responsive Bottom Bar */}
-        <form onSubmit={handleSendMessage} className="bg-white p-2 sm:p-3 border-t border-slate-200 flex items-center gap-2 shrink-0 shadow-md sticky bottom-0 z-20 pb-safe">
+        <form onSubmit={handleSendMessage} className="bg-white p-2 sm:p-3 border-t border-slate-200 flex items-center gap-1.5 sm:gap-2 shrink-0 shadow-md sticky bottom-0 z-20 pb-safe">
           
           {/* File Attachment Button */}
           <label
@@ -1722,6 +2149,16 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
             onChange={handleFileUpload}
             className="hidden"
           />
+
+          {/* Digital Slip Direct Creator Button */}
+          <button
+            type="button"
+            onClick={() => setShowSlipModal(true)}
+            className="w-10 h-10 bg-emerald-100 hover:bg-emerald-200 active:bg-emerald-300 text-emerald-900 rounded-full cursor-pointer transition-colors border border-emerald-300 shadow-xs shrink-0 flex items-center justify-center active:scale-95"
+            title="ڈیجیٹل سلپ یا نسخہ شیئر کریں"
+          >
+            <Receipt className="w-5 h-5 text-emerald-800" />
+          </button>
 
           {/* RECORDING LIVE BAR OR INPUT TEXT */}
           {isRecording ? (
@@ -1879,6 +2316,535 @@ export const DoctorPatientChatView: React.FC<DoctorPatientChatViewProps> = ({
                 <span>نسخہ بھیجیں (Send Rx to Chat)</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================== */}
+      {/* DIGITAL SLIP GENERATOR & SHARING MODAL */}
+      {/* ============================================== */}
+      {showSlipModal && (
+        <div className="fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-2xl w-full text-xs text-slate-900 shadow-2xl my-auto overflow-hidden flex flex-col max-h-[90vh]">
+            
+            {/* Modal Header */}
+            <div className="bg-emerald-800 text-white p-4 sm:p-5 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-bold shadow-md">
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm sm:text-base">
+                    {isUrdu ? 'ڈیجیٹل سلپ و نسخہ شیئرنگ مرکز' : 'Digital Slip & Rx Sharing Hub'}
+                  </h3>
+                  <p className="text-[11px] text-emerald-200">
+                    مریض: <b>{activeContact.nameUrdu || activeContact.nameEnglish}</b> ({activeContact.phone || '0300-1234567'})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowSlipModal(false)}
+                className="w-8 h-8 rounded-full bg-emerald-900 hover:bg-rose-600 text-white flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
+              
+              {/* Slip Type Selector Tabs */}
+              <div>
+                <label className="block text-slate-700 font-bold mb-1.5">سلپ کی قسم کا انتخاب کریں (Select Slip Category):</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'prescription', label: '💊 طبی نسخہ (Rx)', desc: 'ہربل و میڈیکل نسخہ' },
+                    { id: 'invoice', label: '🧾 او پی ڈی فیس', desc: 'کنسلٹیشن و جنرل رسید' },
+                    { id: 'lab_token', label: '🔬 لیب / ٹیسٹ ٹوکن', desc: 'ایکسرے، خون، آنکھیں' },
+                    { id: 'discharge_summary', label: '🏥 ڈسچارج بل', desc: 'حتمی طبی خلاصہ' },
+                  ].map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setActiveSlipTab(tab.id as any)}
+                      className={`p-2.5 rounded-2xl border text-center transition-all ${
+                        activeSlipTab === tab.id
+                          ? 'bg-emerald-700 text-white border-emerald-700 shadow-md font-black ring-2 ring-emerald-400/50'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300'
+                      }`}
+                    >
+                      <div className="text-xs font-bold">{tab.label}</div>
+                      <div className={`text-[10px] mt-0.5 opacity-80 ${activeSlipTab === tab.id ? 'text-emerald-100' : 'text-slate-500'}`}>
+                        {tab.desc}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Doctor & Department Meta */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">معالج / تصدیق کنندہ کا نام:</label>
+                  <input
+                    type="text"
+                    value={slipDoctorName}
+                    onChange={(e) => setSlipDoctorName(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">شعبہ / کلینک:</label>
+                  <input
+                    type="text"
+                    value={slipDepartment}
+                    onChange={(e) => setSlipDepartment(e.target.value)}
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-slate-700 font-bold mb-1">طبی تشخیص / سبب رجوع (Diagnosis):</label>
+                  <input
+                    type="text"
+                    value={slipDiagnosis}
+                    onChange={(e) => setSlipDiagnosis(e.target.value)}
+                    placeholder="مثلاً: معدے میں جلن، نزلہ و زکام، معمول کا بلڈ ٹیسٹ"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-bold focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {/* Items & Medicines List */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-slate-800 font-bold flex items-center gap-1.5">
+                    <span>📋 تجویز کردہ اشیاء / ادویات / لیب ٹیسٹ ({slipItems.length}):</span>
+                  </label>
+                </div>
+
+                {/* Items Table */}
+                <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+                  <div className="bg-slate-100 p-2.5 font-bold text-[11px] text-slate-700 grid grid-cols-12 gap-2">
+                    <div className="col-span-5">نام دوا / ٹیسٹ</div>
+                    <div className="col-span-3">خوراک / تفصیل</div>
+                    <div className="col-span-2 text-center">تعداد</div>
+                    <div className="col-span-2 text-right">رقم</div>
+                  </div>
+
+                  <div className="divide-y divide-slate-100 max-h-40 overflow-y-auto">
+                    {slipItems.map((item, idx) => (
+                      <div key={idx} className="p-2 text-xs grid grid-cols-12 gap-2 items-center hover:bg-slate-50">
+                        <div className="col-span-5 font-bold text-slate-900 truncate">
+                          {item.name}
+                        </div>
+                        <div className="col-span-3 text-[10px] text-emerald-700 font-medium truncate">
+                          {item.dosage || '-'}
+                        </div>
+                        <div className="col-span-2 text-center font-mono font-bold">
+                          {item.qty || 1}
+                        </div>
+                        <div className="col-span-2 text-right font-mono font-bold flex items-center justify-end gap-1.5">
+                          <span>Rs. {((item.price || 0) * (item.qty || 1)).toLocaleString()}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSlipItems(slipItems.filter((_, i) => i !== idx))}
+                            className="text-rose-500 hover:text-rose-700 p-1"
+                            title="ہٹائیں"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Add New Item Row Form */}
+                  <div className="bg-emerald-50/50 p-2.5 border-t border-emerald-100 grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                    <div className="sm:col-span-4">
+                      <input
+                        type="text"
+                        placeholder="دوا یا ٹیسٹ کا نام لکھیں..."
+                        value={newItemName}
+                        onChange={(e) => setNewItemName(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div className="sm:col-span-3">
+                      <input
+                        type="text"
+                        placeholder="خوراک (مثلاً 1 گولی صبح)"
+                        value={newItemDosage}
+                        onChange={(e) => setNewItemDosage(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="تعداد"
+                        value={newItemQty}
+                        onChange={(e) => setNewItemQty(Math.max(1, parseInt(e.target.value) || 1))}
+                        className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-mono text-center focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="رقم (PKR)"
+                        value={newItemPrice}
+                        onChange={(e) => setNewItemPrice(Math.max(0, parseInt(e.target.value) || 0))}
+                        className="w-full bg-white border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-mono text-right focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+                    <div className="sm:col-span-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!newItemName.trim()) return;
+                          setSlipItems([
+                            ...slipItems,
+                            {
+                              name: newItemName,
+                              category: newItemCategory,
+                              qty: newItemQty,
+                              price: newItemPrice,
+                              dosage: newItemDosage,
+                              instructions: 'بعد از غذا',
+                            },
+                          ]);
+                          setNewItemName('');
+                          setNewItemDosage('1+0+1');
+                        }}
+                        className="w-full bg-emerald-700 hover:bg-emerald-600 text-white p-1.5 rounded-lg font-bold flex items-center justify-center shadow-xs"
+                        title="شامل کریں"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Instructions & Precautions */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">ہدایات و استعمال (Instructions):</label>
+                  <textarea
+                    rows={2}
+                    value={slipInstructions}
+                    onChange={(e) => setSlipInstructions(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-bold mb-1">پرہیز و احتیاط (Precautions):</label>
+                  <textarea
+                    rows={2}
+                    value={slipPrecautions}
+                    onChange={(e) => setSlipPrecautions(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-xs focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {/* Financial Calculation Bar */}
+              <div className="bg-slate-900 text-white p-3.5 rounded-2xl space-y-2 shadow-inner font-mono text-xs">
+                <div className="flex justify-between items-center text-slate-300">
+                  <span>ذیلی رقم (Subtotal):</span>
+                  <span>Rs. {slipItems.reduce((acc, it) => acc + ((it.price || 0) * (it.qty || 1)), 0).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between items-center text-rose-300">
+                  <span>خصوصی رعایت (Discount):</span>
+                  <div className="flex items-center gap-1">
+                    <span>Rs. </span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={slipDiscount}
+                      onChange={(e) => setSlipDiscount(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-20 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-right text-rose-300 font-mono text-xs"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-between items-center text-emerald-300">
+                  <span>وصول شدہ رقم (Paid Amount):</span>
+                  <div className="flex items-center gap-1">
+                    <span>Rs. </span>
+                    <input
+                      type="number"
+                      min="0"
+                      value={slipPaid}
+                      onChange={(e) => setSlipPaid(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-20 bg-slate-800 border border-slate-700 rounded px-2 py-0.5 text-right text-emerald-300 font-mono text-xs"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t border-slate-800 text-sm font-black text-amber-300">
+                  <span>بقایا رقم (Balance):</span>
+                  <span>
+                    Rs. {Math.max(
+                      0,
+                      slipItems.reduce((acc, it) => acc + ((it.price || 0) * (it.qty || 1)), 0) -
+                        slipDiscount -
+                        slipPaid
+                    ).toLocaleString()}
+                  </span>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="bg-slate-100 p-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowSlipModal(false)}
+                className="bg-white hover:bg-slate-200 text-slate-700 font-bold px-4 py-2.5 rounded-xl border border-slate-300"
+              >
+                منسوخ کریں
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const subtotal = slipItems.reduce((acc, it) => acc + ((it.price || 0) * (it.qty || 1)), 0);
+                    const grandTotal = Math.max(0, subtotal - slipDiscount);
+                    const balance = Math.max(0, grandTotal - slipPaid);
+
+                    handleShareSlipToWhatsApp({
+                      slipType: activeSlipTab,
+                      slipNumber: `SLIP-${Date.now().toString().slice(-6)}`,
+                      patientName: activeContact.nameUrdu || activeContact.nameEnglish,
+                      patientPhone: activeContact.phone || '0300-1234567',
+                      doctorName: slipDoctorName,
+                      department: slipDepartment,
+                      date: new Date().toLocaleDateString('ur-PK'),
+                      timeSlot: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                      tokenNumber: Math.floor(Math.random() * 40) + 1,
+                      diagnosis: slipDiagnosis,
+                      instructions: slipInstructions,
+                      precautions: slipPrecautions,
+                      items: slipItems,
+                      subtotal,
+                      discount: slipDiscount,
+                      totalAmount: grandTotal,
+                      paidAmount: slipPaid,
+                      balanceAmount: balance,
+                      status: balance === 0 ? 'مکمل ادا شدہ (Paid)' : 'واجب الادا (Partial/Unpaid)',
+                    });
+                  }}
+                  className="bg-teal-600 hover:bg-teal-700 text-white font-bold px-4 py-2.5 rounded-xl flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
+                >
+                  <Share2 className="w-4 h-4" />
+                  <span>واٹس ایپ بھیجیں</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleShareDigitalSlip()}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-black px-5 sm:px-6 py-2.5 rounded-xl flex items-center gap-2 shadow-lg active:scale-95 transition-all"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>چیٹ میں شیئر کریں (Share to Chat)</span>
+                </button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* ============================================== */}
+      {/* FULL PRINTABLE DIGITAL SLIP / PDF PREVIEW MODAL */}
+      {/* ============================================== */}
+      {selectedSlipToPrint && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="bg-white border border-slate-300 rounded-3xl max-w-xl w-full text-slate-900 shadow-2xl my-auto overflow-hidden flex flex-col max-h-[92vh]">
+            
+            {/* Header with Print and Close */}
+            <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <Printer className="w-5 h-5 text-amber-400" />
+                <span className="font-bold text-sm">ڈیجیٹل سلپ و رسید پرنٹ پریویو</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1 shadow-md transition-transform active:scale-95"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>پرنٹ کریں (Print)</span>
+                </button>
+                <button
+                  onClick={() => setSelectedSlipToPrint(null)}
+                  className="w-7 h-7 rounded-full bg-slate-800 hover:bg-rose-600 text-white flex items-center justify-center transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* A4 Style Medical Slip Body */}
+            <div className="p-6 sm:p-8 overflow-y-auto space-y-5 bg-slate-50 flex-1">
+              
+              {/* Slip Card Inside */}
+              <div className="bg-white border-2 border-slate-800 p-6 rounded-2xl space-y-4 shadow-sm relative overflow-hidden">
+                
+                {/* Clinic Header */}
+                <div className="text-center border-b-2 border-slate-800 pb-3 space-y-1">
+                  <h2 className="text-xl font-black text-slate-900">
+                    حافظ کلینک اینڈ ڈائیگنوسٹک سینٹر
+                  </h2>
+                  <p className="text-xs text-slate-600 font-bold">
+                    Hafiz Specialized Clinic & Advanced Diagnostic Center
+                  </p>
+                  <p className="text-[10px] text-slate-500 font-mono">
+                    نزد مین ہسپتال چوک | ہیلپ لائن: 0300-1234567 | رجسٹریشن # HC-9482
+                  </p>
+                  <div className="pt-1">
+                    <span className="bg-slate-900 text-white px-3 py-1 rounded-full text-xs font-black">
+                      {selectedSlipToPrint.slipType === 'prescription'
+                        ? 'طبی نسخہ (Rx Medical Prescription)'
+                        : selectedSlipToPrint.slipType === 'lab_token'
+                        ? 'لیب و ریڈیالوجی ٹوکن (Lab & Diagnostic Token)'
+                        : selectedSlipToPrint.slipType === 'discharge_summary'
+                        ? 'ڈسچارج سمری و حتمی بل (Discharge Summary)'
+                        : 'او پی ڈی فیس سلپ (OPD Consultation Invoice)'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Patient & Token Grid */}
+                <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50 p-3 rounded-xl border border-slate-300">
+                  <div>
+                    <span className="text-slate-500 font-bold">سلپ نمبر: </span>
+                    <span className="font-mono font-black text-slate-900">#{selectedSlipToPrint.slipNumber}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-slate-500 font-bold">ٹوکن نمبر: </span>
+                    <span className="font-mono font-black text-emerald-800">#{selectedSlipToPrint.tokenNumber || '12'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 font-bold">مریض کا نام: </span>
+                    <span className="font-black text-slate-900">{selectedSlipToPrint.patientName}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-slate-500 font-bold">فون نمبر: </span>
+                    <span className="font-mono">{selectedSlipToPrint.patientPhone || '0300-1234567'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 font-bold">معالج / شعبہ: </span>
+                    <span className="font-bold">{selectedSlipToPrint.doctorName || selectedSlipToPrint.department}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-slate-500 font-bold">تاریخ و وقت: </span>
+                    <span className="font-mono">{selectedSlipToPrint.date} {selectedSlipToPrint.timeSlot}</span>
+                  </div>
+                </div>
+
+                {/* Diagnosis */}
+                {selectedSlipToPrint.diagnosis && (
+                  <div className="p-2.5 bg-emerald-50 border border-emerald-300 rounded-xl text-xs text-emerald-950">
+                    <span className="font-bold text-emerald-900">تشخیص (Diagnosis): </span>
+                    <span>{selectedSlipToPrint.diagnosis}</span>
+                  </div>
+                )}
+
+                {/* Items / Prescription Table */}
+                {selectedSlipToPrint.items && selectedSlipToPrint.items.length > 0 && (
+                  <div className="border border-slate-300 rounded-xl overflow-hidden">
+                    <table className="w-full text-xs text-right">
+                      <thead className="bg-slate-800 text-white">
+                        <tr>
+                          <th className="p-2">شمار</th>
+                          <th className="p-2">تفصیل / دوا / ٹیسٹ</th>
+                          <th className="p-2">خوراک و ہدایات</th>
+                          <th className="p-2 text-center">تعداد</th>
+                          <th className="p-2 text-left font-mono">رقم</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200">
+                        {selectedSlipToPrint.items.map((it, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="p-2 text-slate-500 font-mono">{idx + 1}</td>
+                            <td className="p-2 font-bold text-slate-900">{it.name}</td>
+                            <td className="p-2 text-emerald-800 text-[11px]">{it.dosage || '-'}</td>
+                            <td className="p-2 text-center font-mono">{it.qty || 1}</td>
+                            <td className="p-2 text-left font-mono font-bold">Rs. {((it.price || 0) * (it.qty || 1)).toLocaleString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Totals */}
+                {(selectedSlipToPrint.totalAmount !== undefined && selectedSlipToPrint.totalAmount > 0) && (
+                  <div className="bg-slate-100 p-3 rounded-xl space-y-1 font-mono text-xs border border-slate-300">
+                    <div className="flex justify-between">
+                      <span>کل رقم (Total):</span>
+                      <span>Rs. {selectedSlipToPrint.totalAmount.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-emerald-700">
+                      <span>ادا شدہ رقم (Paid):</span>
+                      <span>Rs. {(selectedSlipToPrint.paidAmount || 0).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-rose-700 font-black border-t border-slate-300 pt-1">
+                      <span>بقایا رقم (Balance):</span>
+                      <span>Rs. {(selectedSlipToPrint.balanceAmount || 0).toLocaleString()}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Instructions */}
+                {selectedSlipToPrint.instructions && (
+                  <div className="text-xs space-y-1 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                    <div className="font-bold text-slate-800">طبی ہدایات و پرہیز:</div>
+                    <p className="leading-relaxed text-slate-600">{selectedSlipToPrint.instructions}</p>
+                    {selectedSlipToPrint.precautions && (
+                      <p className="text-rose-700 font-bold mt-1">پرہیز: {selectedSlipToPrint.precautions}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Signatures & Stamp */}
+                <div className="flex justify-between items-end pt-6 border-t border-slate-300 text-[10px] text-slate-500">
+                  <div className="text-center space-y-1">
+                    <div className="w-24 border-b border-slate-400 mx-auto"></div>
+                    <div>مریض / رشتہ دار کے دستخط</div>
+                  </div>
+                  <div className="text-center space-y-1">
+                    <div className="w-28 border-b-2 border-slate-800 mx-auto"></div>
+                    <div className="font-bold text-slate-800">مجاز معالج / کلینک مہر</div>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* Modal Bottom Print Button */}
+            <div className="bg-slate-100 p-3.5 border-t border-slate-200 flex justify-end gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setSelectedSlipToPrint(null)}
+                className="bg-white hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-xl border border-slate-300 text-xs"
+              >
+                بند کریں
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md"
+              >
+                <Printer className="w-4 h-4" />
+                <span>پرنٹ سلپ (Print Slip)</span>
+              </button>
+            </div>
+
           </div>
         </div>
       )}

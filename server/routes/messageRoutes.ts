@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { Message } from '../models/Message';
 import { getMongoConnectedStatus } from '../config/db';
+import { deleteFromCloudinary, deleteMultipleFromCloudinary } from '../config/cloudinary';
 
 const router = Router();
 
@@ -117,6 +118,7 @@ router.post('/', async (req: Request, res: Response) => {
       audioUrl: req.body.audioUrl,
       audioDuration: req.body.audioDuration,
       documentType: req.body.documentType,
+      digitalSlip: req.body.digitalSlip,
       createdAt: req.body.createdAt || new Date().toISOString(),
     };
 
@@ -131,6 +133,122 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     return res.status(201).json({ success: true, messageItem: msgItem });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// DELETE /api/messages/conversation (Deletes all messages between two users and purges their Cloudinary media)
+router.delete('/conversation', async (req: Request, res: Response) => {
+  try {
+    const { user1, user2 } = req.query;
+    const u1 = String(user1 || '').trim();
+    const u2 = String(user2 || '').trim();
+
+    if (!u1 || !u2) {
+      return res.status(400).json({ success: false, message: 'user1 and user2 query parameters are required.' });
+    }
+
+    const aliases1 = getAliases(u1);
+    const aliases2 = getAliases(u2);
+
+    let messagesToDelete: any[] = [];
+
+    if (getMongoConnectedStatus()) {
+      const mongoMsgs = await Message.find({
+        $or: [
+          { senderId: { $in: aliases1 }, receiverId: { $in: aliases2 } },
+          { senderId: { $in: aliases2 }, receiverId: { $in: aliases1 } },
+        ],
+      });
+      messagesToDelete = [...mongoMsgs];
+
+      await Message.deleteMany({
+        $or: [
+          { senderId: { $in: aliases1 }, receiverId: { $in: aliases2 } },
+          { senderId: { $in: aliases2 }, receiverId: { $in: aliases1 } },
+        ],
+      });
+    }
+
+    // Identify from inMemory as well
+    const memMsgs = inMemoryMessages.filter((m) => {
+      const sId = String(m.senderId || '').trim();
+      const rId = String(m.receiverId || '').trim();
+      const match1to2 = aliases1.some((a) => a.toLowerCase() === sId.toLowerCase()) &&
+                        aliases2.some((b) => b.toLowerCase() === rId.toLowerCase());
+      const match2to1 = aliases2.some((b) => b.toLowerCase() === sId.toLowerCase()) &&
+                        aliases1.some((a) => a.toLowerCase() === rId.toLowerCase());
+      return match1to2 || match2to1;
+    });
+
+    messagesToDelete = [...messagesToDelete, ...memMsgs];
+
+    // Filter out from inMemoryMessages
+    inMemoryMessages = inMemoryMessages.filter((m) => !memMsgs.includes(m));
+
+    // Batch purge all Cloudinary attachments and audio notes
+    const mediaUrlsToPurge: string[] = [];
+    for (const msg of messagesToDelete) {
+      if (msg.attachmentUrl) mediaUrlsToPurge.push(msg.attachmentUrl);
+      if (msg.audioUrl) mediaUrlsToPurge.push(msg.audioUrl);
+    }
+
+    if (mediaUrlsToPurge.length > 0) {
+      await deleteMultipleFromCloudinary(mediaUrlsToPurge);
+    }
+
+    return res.json({
+      success: true,
+      message: `Conversation and ${mediaUrlsToPurge.length} associated Cloudinary media files deleted successfully.`,
+      purgedMediaCount: mediaUrlsToPurge.length,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// DELETE /api/messages/:id (Deletes single message and purges its Cloudinary attachment/audio)
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const attachmentUrl = req.body?.attachmentUrl || (req.query?.attachmentUrl as string);
+    const audioUrl = req.body?.audioUrl || (req.query?.audioUrl as string);
+
+    let targetAttachment = attachmentUrl;
+    let targetAudio = audioUrl;
+
+    if (getMongoConnectedStatus()) {
+      const isObjId = id.length === 24 && /^[0-9a-fA-F]+$/.test(id);
+      const query = isObjId ? { $or: [{ _id: id }, { id }] } : { id };
+      const msg = await Message.findOne(query);
+
+      if (msg) {
+        targetAttachment = msg.attachmentUrl || targetAttachment;
+        targetAudio = msg.audioUrl || targetAudio;
+        await Message.findOneAndDelete(query);
+      }
+    }
+
+    const memMsg = inMemoryMessages.find((m) => m.id === id || m._id === id);
+    if (memMsg) {
+      targetAttachment = memMsg.attachmentUrl || targetAttachment;
+      targetAudio = memMsg.audioUrl || targetAudio;
+    }
+    inMemoryMessages = inMemoryMessages.filter((m) => m.id !== id && m._id !== id);
+
+    // Purge from Cloudinary
+    if (targetAttachment) {
+      await deleteFromCloudinary(targetAttachment);
+    }
+    if (targetAudio) {
+      await deleteFromCloudinary(targetAudio);
+    }
+
+    return res.json({
+      success: true,
+      message: 'Message and associated Cloudinary media deleted successfully.',
+    });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }

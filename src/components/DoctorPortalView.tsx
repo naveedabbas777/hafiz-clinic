@@ -41,6 +41,7 @@ import {
   Glasses,
   RefreshCw,
   Download,
+  Volume2,
 } from 'lucide-react';
 import { Appointment, Doctor, MoneySlip, MoneySlipItem } from '../types';
 import { loginApi, getReportsApi, updateReportApi, getAppointmentsApi, updateAppointmentApi } from '../services/api';
@@ -52,9 +53,18 @@ import {
   saveSlipApi,
   HOSPITAL_SERVICES_CATALOG,
 } from '../services/billingService';
+import {
+  getLocalQueueTokens,
+  saveLocalQueueTokens,
+  playChimeBell,
+  announceTokenSpeech,
+} from '../services/queueService';
+import { OPDQueueToken } from '../types';
 import { printInvoiceHtml, printPrescriptionHtml, downloadInvoicePdf, downloadPrescriptionPdf, printInvoicePdf } from '../utils/printInvoice';
 import { openWhatsAppNotification } from '../utils/notificationDispatcher';
 import { DoctorPatientChatView } from './DoctorPatientChatView';
+import { DigitalRxModal } from './DigitalRxModal';
+import { DigitalPrescription } from '../types';
 
 interface DoctorPortalProps {
   appointments: Appointment[];
@@ -118,6 +128,25 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
   // Doctor Availability Toggle
   const [isOPDActive, setIsOPDActive] = useState(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isDigitalRxModalOpen, setIsDigitalRxModalOpen] = useState(false);
+
+  // Live OPD Calling & TV Sync State
+  const [opdTokens, setOpdTokens] = useState<OPDQueueToken[]>(() => getLocalQueueTokens());
+  const [callingTokenId, setCallingTokenId] = useState<string | null>(null);
+  const [callSuccessMsg, setCallSuccessMsg] = useState<string | null>(null);
+
+  // Synchronize local OPD queue state across tabs & TV display
+  useEffect(() => {
+    const handleQueueChange = () => {
+      setOpdTokens(getLocalQueueTokens());
+    };
+    window.addEventListener('storage', handleQueueChange);
+    window.addEventListener('opd_queue_updated', handleQueueChange);
+    return () => {
+      window.removeEventListener('storage', handleQueueChange);
+      window.removeEventListener('opd_queue_updated', handleQueueChange);
+    };
+  }, []);
 
   useEffect(() => {
     setAppointmentsList(appointments);
@@ -196,6 +225,126 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
     } catch (e) {
       console.error(e);
     }
+  };
+
+  // Dedicated OPD Queue Call & TV Synchronizer
+  const handleCallPatient = (app: Appointment) => {
+    try {
+      playChimeBell();
+    } catch (err) {}
+
+    const tokenCodeStr = app.tokenNumber ? String(app.tokenNumber) : (app.id && app.id.startsWith('APP-') ? app.id.replace('APP-', 'TK-') : 'TK-101');
+    const numericPart = parseInt(tokenCodeStr.replace(/\D/g, ''), 10) || 41;
+    const docId = currentDoctor?.id || 'doc-1';
+    const docDisplayName = currentDoctor?.fullName || (isUrdu ? (activeDoctorObj?.nameUrdu || 'ڈاکٹر زیشان چوہدری') : (activeDoctorObj?.nameEnglish || 'Dr. Zeeshan Chaudhry'));
+    const docDept = currentDoctor?.department || (activeDoctorObj?.titleUrdu || (docId === 'doc-2' ? 'Physiotherapy & Eye Clinic (کمرہ ۲)' : 'General OPD & Herbal (کمرہ ۱)'));
+
+    setCallingTokenId(app.id);
+
+    // Announce voice in Urdu or English
+    try {
+      announceTokenSpeech(tokenCodeStr, docDisplayName, isUrdu ? 'urdu' : 'english');
+    } catch (err) {}
+
+    // Update or Insert into localStorage OPD Queue
+    const currentTokens = getLocalQueueTokens();
+    const existingIndex = currentTokens.findIndex(
+      (t) =>
+        t.tokenCode === tokenCodeStr ||
+        String(t.tokenNumber) === String(numericPart) ||
+        (t.patientPhone && app.phone && t.patientPhone.replace(/\D/g, '') === app.phone.replace(/\D/g, '')) ||
+        (t.patientName && t.patientName.trim().toLowerCase() === app.patientName.trim().toLowerCase())
+    );
+
+    let updatedTokens: OPDQueueToken[];
+    if (existingIndex >= 0) {
+      updatedTokens = currentTokens.map((t, idx) => {
+        if (idx === existingIndex) {
+          return {
+            ...t,
+            patientName: app.patientName,
+            doctorId: docId,
+            doctorName: docDisplayName,
+            status: 'Calling',
+            issueTime: t.issueTime || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          };
+        }
+        // If another token was Calling for THIS doctor, move it to In Consultation
+        if (t.doctorId === docId && t.status === 'Calling') {
+          return { ...t, status: 'In Consultation' };
+        }
+        return t;
+      });
+    } else {
+      // Create new token in queue
+      const newToken: OPDQueueToken = {
+        id: `TK-${Date.now()}`,
+        tokenNumber: numericPart,
+        tokenCode: tokenCodeStr,
+        patientName: app.patientName,
+        patientPhone: app.phone,
+        doctorId: docId,
+        doctorName: docDisplayName,
+        department: docDept,
+        issueTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        estimatedWaitMins: 0,
+        status: 'Calling',
+      };
+      // Demote previous calling tokens of this doctor
+      const sanitized = currentTokens.map((t) => (t.doctorId === docId && t.status === 'Calling' ? { ...t, status: 'In Consultation' as const } : t));
+      updatedTokens = [newToken, ...sanitized];
+    }
+
+    saveLocalQueueTokens(updatedTokens);
+    setOpdTokens(updatedTokens);
+
+    setCallSuccessMsg(
+      isUrdu
+        ? `📢 مریض ${app.patientName} (ٹوکن #${tokenCodeStr}) کو کال کر دی گئی ہے اور ٹی وی اسکرین پر لائیو چلا دیا گیا ہے۔`
+        : `📢 Calling patient ${app.patientName} (Token #${tokenCodeStr})! Broadcasted to Live TV display.`
+    );
+
+    setTimeout(() => {
+      setCallingTokenId(null);
+    }, 2000);
+
+    setTimeout(() => {
+      setCallSuccessMsg(null);
+    }, 6000);
+  };
+
+  const handleSetPatientInConsultation = (app: Appointment) => {
+    const tokenCodeStr = app.tokenNumber ? String(app.tokenNumber) : (app.id && app.id.startsWith('APP-') ? app.id.replace('APP-', 'TK-') : 'TK-101');
+    const docId = currentDoctor?.id || 'doc-1';
+    const currentTokens = getLocalQueueTokens();
+    const updated = currentTokens.map((t) => {
+      if (
+        t.tokenCode === tokenCodeStr ||
+        (t.patientName && t.patientName.trim().toLowerCase() === app.patientName.trim().toLowerCase())
+      ) {
+        return { ...t, status: 'In Consultation' as const };
+      }
+      return t;
+    });
+    saveLocalQueueTokens(updated);
+    setOpdTokens(updated);
+  };
+
+  const handleFinishOPDQueueToken = (app: Appointment) => {
+    const tokenCodeStr = app.tokenNumber ? String(app.tokenNumber) : (app.id && app.id.startsWith('APP-') ? app.id.replace('APP-', 'TK-') : 'TK-101');
+    const currentTokens = getLocalQueueTokens();
+    const updated = currentTokens.map((t) => {
+      if (
+        t.tokenCode === tokenCodeStr ||
+        (t.patientName && t.patientName.trim().toLowerCase() === app.patientName.trim().toLowerCase())
+      ) {
+        return { ...t, status: 'Completed' as const };
+      }
+      return t;
+    });
+    saveLocalQueueTokens(updated);
+    setOpdTokens(updated);
+    handleUpdateStatus(app.id || (app as any)._id, 'Completed');
   };
 
   // Quick Add Pre-set Item or Custom Item to Patient's Invoice
@@ -496,8 +645,24 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
   const doctorName = currentDoctor?.fullName || (isUrdu ? (activeDoctorObj?.nameUrdu || 'ڈاکٹر زیشان چوہدری') : (activeDoctorObj?.nameEnglish || 'Dr. Zeeshan Chaudhry'));
   const doctorTitle = activeDoctorObj?.titleEnglish || 'MBBS, FCPS, Senior Herbal Practitioner';
 
-  // Queue Filters
-  const filteredQueue = appointmentsList.filter((app) => {
+  // Queue Filters (Strictly filtered by the active logged-in Doctor)
+  const isDoctorAssignedToApp = (app: Appointment, docId: string): boolean => {
+    const appDocId = app.doctorId;
+    const appDocName = (app.doctorName || '').toLowerCase();
+    if (appDocId) {
+      return appDocId === docId;
+    }
+    if (docId === 'doc-2') {
+      return appDocName.includes('waqas') || appDocName.includes('وقاص');
+    }
+    return appDocName.includes('zeeshan') || appDocName.includes('زیشان') || !appDocName;
+  };
+
+  const doctorAppointments = appointmentsList.filter((app) =>
+    isDoctorAssignedToApp(app, currentDoctor?.id || 'doc-1')
+  );
+
+  const filteredQueue = doctorAppointments.filter((app) => {
     const q = searchQuery.toLowerCase().trim();
     const matchesSearch =
       !q ||
@@ -518,49 +683,50 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
     return app.status === statusFilter;
   });
 
-  // Stats calculation
-  const totalOPDCount = appointmentsList.length;
-  const pendingCount = appointmentsList.filter((a) => a.status === 'Pending').length;
-  const approvedCount = appointmentsList.filter((a) => a.status === 'Approved').length;
-  const completedCount = appointmentsList.filter((a) => a.status === 'Completed').length;
+  // Doctor-specific Live OPD Queue Tokens
+  const doctorOpdTokens = opdTokens.filter((t) => t.doctorId === (currentDoctor?.id || 'doc-1'));
+  const currentCallingToken = doctorOpdTokens.find((t) => t.status === 'Calling');
+  const currentInConsultToken = doctorOpdTokens.find((t) => t.status === 'In Consultation');
+
+  // Stats calculation (Strictly for this doctor)
+  const totalOPDCount = doctorAppointments.length;
+  const pendingCount = doctorAppointments.filter((a) => a.status === 'Pending').length;
+  const approvedCount = doctorAppointments.filter((a) => a.status === 'Approved').length;
+  const completedCount = doctorAppointments.filter((a) => a.status === 'Completed').length;
 
   // LOGIN SCREEN FOR DOCTOR
   if (!isDoctorAuth) {
     return (
-      <div className="py-12 bg-slate-900 text-slate-100 min-h-screen flex items-center justify-center px-4 font-sans">
-        <div className="bg-slate-800 border border-slate-700 p-8 sm:p-10 rounded-3xl shadow-2xl max-w-lg w-full space-y-6 relative overflow-hidden">
-          {/* Decorative Glow */}
-          <div className="absolute -top-20 -right-20 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-20 -left-20 w-48 h-48 bg-teal-500/10 rounded-full blur-3xl pointer-events-none" />
-
+      <div className="py-12 bg-slate-50 text-slate-900 min-h-screen flex items-center justify-center px-4 font-sans">
+        <div className="bg-white border border-slate-200 p-8 sm:p-10 rounded-3xl shadow-sm max-w-lg w-full space-y-6 relative overflow-hidden">
           <div className="text-center space-y-3 relative z-10">
-            <div className="relative w-20 h-20 rounded-full overflow-hidden mx-auto border-2 border-emerald-400 shadow-xl ring-4 ring-emerald-500/20">
+            <div className="relative w-20 h-20 rounded-full overflow-hidden mx-auto border-2 border-emerald-500 shadow-md ring-4 ring-emerald-50">
               <img
                 src={doctorImage}
                 alt={doctorName}
                 className="w-full h-full object-cover object-top"
               />
             </div>
-            <div className="inline-block bg-amber-400/20 text-amber-300 border border-amber-400/30 font-mono text-[11px] px-3 py-1 rounded-full font-bold">
-              OFFICIAL MEDICAL EMR WORKSPACE
+            <div className="inline-block bg-emerald-100 text-emerald-900 border border-emerald-200 font-mono text-[11px] px-3 py-1 rounded-full font-bold">
+              OFFICIAL MEDICAL EMR WORKSPACE • شعبہ معالجین
             </div>
-            <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-              {isUrdu ? 'معالج ڈیجیٹل ڈیک پورٹل' : 'Official Doctor Portal'}
+            <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+              {isUrdu ? 'معالج ڈیجیٹل ڈیسک پورٹل' : 'Official Doctor Portal'}
             </h2>
-            <p className="text-xs text-emerald-300 font-bold">
+            <p className="text-xs text-emerald-800 font-bold">
               {doctorName} ({doctorTitle})
             </p>
           </div>
 
-          <form onSubmit={handleDoctorLogin} className="space-y-4 text-xs relative z-10">
+          <form onSubmit={handleDoctorLogin} className="space-y-4 text-xs relative z-10 font-semibold">
             {authError && (
-              <div className="p-3 bg-rose-500/20 border border-rose-500/40 text-rose-300 rounded-xl font-bold text-center">
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl font-bold text-center">
                 {authError}
               </div>
             )}
 
             <div>
-              <label className="block text-slate-300 font-bold mb-1.5">
+              <label className="block text-slate-700 font-bold mb-1.5">
                 {isUrdu ? 'معالج یوزر نیم / آئی ڈی' : 'Doctor Username'}
               </label>
               <input
@@ -568,13 +734,13 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
-                className="w-full bg-slate-900 border border-slate-700 p-3.5 rounded-xl text-white font-mono font-bold focus:outline-none focus:border-emerald-500 transition-all placeholder-slate-600"
+                className="w-full bg-slate-50 border border-slate-300 p-3.5 rounded-xl text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all placeholder-slate-400"
                 placeholder="doctor1"
               />
             </div>
 
             <div>
-              <label className="block text-slate-300 font-bold mb-1.5">
+              <label className="block text-slate-700 font-bold mb-1.5">
                 {isUrdu ? 'محفوظ پاس ورڈ' : 'Password'}
               </label>
               <input
@@ -582,7 +748,7 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full bg-slate-900 border border-slate-700 p-3.5 rounded-xl text-white font-mono font-bold focus:outline-none focus:border-emerald-500 transition-all placeholder-slate-600"
+                className="w-full bg-slate-50 border border-slate-300 p-3.5 rounded-xl text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all placeholder-slate-400"
                 placeholder="••••••••"
               />
             </div>
@@ -590,7 +756,7 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl text-sm transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+              className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-3.5 rounded-xl text-sm transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
             >
               <Lock className="w-4 h-4" />
               <span>
@@ -604,24 +770,38 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
               </span>
             </button>
 
-            {/* Demo Quick Auto-Fill */}
-            <div className="pt-2 flex justify-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setUsername('doctor1');
-                  setPassword('doc123');
-                }}
-                className="text-[11px] text-amber-400 hover:text-amber-300 underline font-mono"
-              >
-                {isUrdu ? 'ڈیمو لاگ ان ڈیٹا سیٹ کریں (doctor1 / doc123)' : 'Set Demo Credentials (doctor1 / doc123)'}
-              </button>
+            {/* Demo Quick Auto-Fill for both doctors */}
+            <div className="pt-2 space-y-1.5 text-center">
+              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                {isUrdu ? 'آسان ڈیمو لاگ ان منتخب کریں:' : 'Quick Select Demo Doctor:'}
+              </div>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUsername('doctor1');
+                    setPassword('doc123');
+                  }}
+                  className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs border border-emerald-200 font-bold font-mono transition-all cursor-pointer"
+                >
+                  👨‍⚕️ Dr. Zeeshan (doctor1)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUsername('doctor2');
+                  }}
+                  className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 rounded-lg text-xs border border-teal-200 font-bold font-mono transition-all cursor-pointer"
+                >
+                  👨‍⚕️ Dr. Waqas (doctor2)
+                </button>
+              </div>
             </div>
           </form>
 
           {/* Security Banner */}
-          <div className="bg-slate-900/80 p-3 rounded-2xl border border-slate-700/80 text-[11px] text-slate-400 flex items-center justify-center gap-2 relative z-10">
-            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+          <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-[11px] text-slate-600 flex items-center justify-center gap-2 relative z-10">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>
               {isUrdu
                 ? 'حافظ کلینک کے مستند میڈیکل آفیسرز کے لیے اینکرپٹڈ پورٹل'
@@ -633,7 +813,7 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
             <div className="text-center pt-2">
               <button
                 onClick={() => setActiveView('home')}
-                className="text-xs text-slate-400 hover:text-white underline font-semibold transition-colors"
+                className="text-xs text-slate-500 hover:text-slate-900 underline font-semibold transition-colors cursor-pointer"
               >
                 ← {isUrdu ? 'عوام کے لیے ویب سائٹ پر واپس جائیں' : 'Back to Public Website'}
               </button>
@@ -946,7 +1126,7 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                 </div>
 
                 <div className="space-y-2.5 text-xs">
-                  {appointmentsList.slice(0, 5).map((app, idx) => (
+                  {doctorAppointments.slice(0, 5).map((app, idx) => (
                     <div
                       key={app.id || idx}
                       className="p-3 bg-slate-50 hover:bg-emerald-50/50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 transition-colors"
@@ -985,6 +1165,11 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                       </div>
                     </div>
                   ))}
+                  {doctorAppointments.length === 0 && (
+                    <div className="text-center py-6 text-slate-400 font-medium">
+                      {isUrdu ? 'آج کے لیے اس ڈاکٹر کے پاس کوئی مریض رجسٹرڈ نہیں ہے۔' : 'No patients registered for this doctor today.'}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1125,6 +1310,51 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
 
               {/* Queue Items */}
               <div className="space-y-2.5 text-xs max-h-[600px] overflow-y-auto pr-1">
+                {/* Live Broadcast Call Notification Banner */}
+                {callSuccessMsg && (
+                  <div className="p-3 bg-emerald-700 text-white rounded-2xl text-xs font-bold animate-bounce shadow-md flex items-center gap-2">
+                    <Volume2 className="w-4 h-4 shrink-0 animate-pulse text-amber-300" />
+                    <span className="flex-1">{callSuccessMsg}</span>
+                  </div>
+                )}
+
+                {/* Currently Calling Token Banner for Doctor */}
+                {currentCallingToken && (
+                  <div className="p-3 bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 rounded-2xl border-2 border-amber-300 shadow-md space-y-1.5 animate-pulse">
+                    <div className="flex items-center justify-between text-[11px] font-black uppercase">
+                      <span className="flex items-center gap-1.5">
+                        <Volume2 className="w-3.5 h-3.5" />
+                        <span>{isUrdu ? 'اس وقت پکارا جا رہا ہے (Calling on TV)' : 'Calling on Live TV Display'}</span>
+                      </span>
+                      <span className="bg-slate-950 text-amber-400 px-2 py-0.5 rounded-md font-mono text-[10px]">
+                        ROOM #{currentDoctor?.id === 'doc-2' ? '2' : '1'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="font-extrabold text-sm">
+                        {currentCallingToken.patientName}{' '}
+                        <span className="font-mono bg-slate-950/20 px-1.5 py-0.5 rounded text-xs ml-1">
+                          #{currentCallingToken.tokenCode}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const targetApp = appointmentsList.find(
+                            (a) =>
+                              (a.tokenNumber && String(a.tokenNumber) === currentCallingToken.tokenCode) ||
+                              a.patientName.trim().toLowerCase() === currentCallingToken.patientName.trim().toLowerCase()
+                          );
+                          if (targetApp) handleSetPatientInConsultation(targetApp);
+                        }}
+                        className="bg-slate-950 hover:bg-slate-900 text-white text-[10px] font-bold px-2.5 py-1 rounded-xl shadow-xs cursor-pointer"
+                      >
+                        {isUrdu ? 'کمرے میں داخل ہوا' : 'In Consultation'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {filteredQueue.length === 0 ? (
                   <div className="text-center py-8 text-slate-400 font-medium">
                     {isUrdu ? 'کوئی مریض نہیں ملا۔' : 'No patients match your search.'}
@@ -1134,12 +1364,20 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                     const itemKey = app.id || (app as any)._id || `app-${idx}`;
                     const isSelected = selectedApp?.id === app.id || (selectedApp && (selectedApp as any)._id === (app as any)._id);
                     const tokenNum = app.tokenNumber || (app as any).token || (app.id && app.id.startsWith('APP-') ? app.id.replace('APP-', 'TK-') : `TK-${idx + 101}`);
+                    const isCallingThis = callingTokenId === app.id;
+                    const queueTokenItem = doctorOpdTokens.find(
+                      (t) =>
+                        t.tokenCode === tokenNum ||
+                        String(t.tokenNumber) === String(tokenNum).replace(/\D/g, '') ||
+                        t.patientName.trim().toLowerCase() === app.patientName.trim().toLowerCase()
+                    );
+                    const tokenLiveStatus = queueTokenItem ? queueTokenItem.status : (app.status === 'Approved' ? 'In Consultation' : app.status === 'Completed' ? 'Completed' : 'Waiting');
 
                     return (
                       <div
                         key={itemKey}
                         onClick={() => setSelectedApp(app)}
-                        className={`p-3.5 rounded-2xl border cursor-pointer transition-all space-y-2 ${
+                        className={`p-3.5 rounded-2xl border cursor-pointer transition-all space-y-2 relative ${
                           isSelected
                             ? 'bg-emerald-50 border-emerald-500 text-emerald-950 font-bold shadow-md ring-2 ring-emerald-400/40'
                             : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-800'
@@ -1152,19 +1390,27 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                               🎫 {tokenNum}
                             </span>
                           </div>
-                          <span
-                            className={`text-[10px] px-2 py-0.5 rounded-md font-mono shrink-0 font-bold ${
-                              app.status === 'Approved'
-                                ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                                : app.status === 'Completed'
-                                ? 'bg-blue-100 text-blue-900 border border-blue-300'
-                                : app.status === 'Cancelled'
-                                ? 'bg-rose-100 text-rose-900 border border-rose-300'
-                                : 'bg-amber-100 text-amber-900 border border-amber-300'
-                            }`}
-                          >
-                            {app.status}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {tokenLiveStatus === 'Calling' && (
+                              <span className="bg-amber-500 text-slate-950 px-2 py-0.5 rounded-md font-mono text-[10px] font-black animate-pulse flex items-center gap-1">
+                                <Volume2 className="w-3 h-3" />
+                                {isUrdu ? 'پکارا گیا' : 'CALLING'}
+                              </span>
+                            )}
+                            <span
+                              className={`text-[10px] px-2 py-0.5 rounded-md font-mono shrink-0 font-bold ${
+                                app.status === 'Approved'
+                                  ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                  : app.status === 'Completed'
+                                  ? 'bg-blue-100 text-blue-900 border border-blue-300'
+                                  : app.status === 'Cancelled'
+                                  ? 'bg-rose-100 text-rose-900 border border-rose-300'
+                                  : 'bg-amber-100 text-amber-900 border border-amber-300'
+                              }`}
+                            >
+                              {app.status}
+                            </span>
+                          </div>
                         </div>
 
                         {app.referralToken && (
@@ -1186,12 +1432,28 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                           </div>
                         </div>
 
-                        {/* Quick Status Handler */}
+                        {/* Quick Action & Live TV Call Bar */}
                         <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/80" onClick={(e) => e.stopPropagation()}>
+                          {/* Live Call Button to Broadcast to TV Display & Sound */}
+                          <button
+                            type="button"
+                            onClick={() => handleCallPatient(app)}
+                            disabled={isCallingThis}
+                            className={`flex-1 min-w-[85px] py-1.5 px-2 rounded-xl text-[10px] font-black flex items-center justify-center gap-1 transition-all cursor-pointer shadow-sm ${
+                              tokenLiveStatus === 'Calling'
+                                ? 'bg-amber-500 text-slate-950 ring-2 ring-amber-300 animate-pulse'
+                                : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white'
+                            }`}
+                            title={isUrdu ? 'مریض کو ٹی وی اسکرین اور وائس اسپیکر پر پکاریں' : 'Call patient on Live OPD TV Screen & Voice Announcement'}
+                          >
+                            <Volume2 className="w-3.5 h-3.5" />
+                            <span>{isCallingThis ? (isUrdu ? 'کال ہو رہا ہے...' : 'Calling...') : (isUrdu ? '📢 پکاریں (Call)' : '📢 Call to Room')}</span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => handleUpdateStatus(app.id || (app as any)._id, 'Approved')}
-                            className={`flex-1 min-w-[70px] py-1 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
+                            className={`py-1 px-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
                               app.status === 'Approved'
                                 ? 'bg-emerald-700 text-white shadow-xs'
                                 : 'bg-emerald-100 hover:bg-emerald-600 hover:text-white text-emerald-900 border border-emerald-300'
@@ -1213,26 +1475,26 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
 
                           <button
                             type="button"
-                            onClick={() => handleUpdateStatus(app.id || (app as any)._id, 'Completed')}
-                            className={`flex-1 min-w-[70px] py-1 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
+                            onClick={() => handleFinishOPDQueueToken(app)}
+                            className={`py-1 px-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
                               app.status === 'Completed'
                                 ? 'bg-blue-700 text-white shadow-xs'
                                 : 'bg-blue-100 hover:bg-blue-600 hover:text-white text-blue-900 border border-blue-300'
                             }`}
                           >
-                            <span>{isUrdu ? 'مکمل' : 'Complete'}</span>
+                            <span>{isUrdu ? 'مکمل' : 'Done'}</span>
                           </button>
 
                           <button
                             type="button"
                             onClick={() => handleUpdateStatus(app.id || (app as any)._id, 'Cancelled')}
-                            className={`py-1 px-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
+                            className={`py-1 px-1.5 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
                               app.status === 'Cancelled'
                                 ? 'bg-rose-700 text-white shadow-xs'
                                 : 'bg-rose-100 hover:bg-rose-600 hover:text-white text-rose-900 border border-rose-300'
                             }`}
                           >
-                            <span>{isUrdu ? 'مسترد' : 'Reject'}</span>
+                            <span>✕</span>
                           </button>
                         </div>
                       </div>
@@ -1251,6 +1513,14 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                 </h3>
                 {selectedApp && (
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsDigitalRxModalOpen(true)}
+                      className="text-xs bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white px-3.5 py-1.5 rounded-xl font-black flex items-center gap-1.5 shadow-md transition-all cursor-pointer active:scale-95 animate-pulse"
+                    >
+                      <FilePlus className="w-4 h-4 text-emerald-200" />
+                      <span>{isUrdu ? '✨ نیا آفیشل ڈیجیٹل نسخہ (Digital Rx Pad)' : '✨ Official Digital Rx Pad'}</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => setReferralModalApp(selectedApp)}
@@ -1274,9 +1544,20 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                       <div>
                         <span className="text-slate-500 block text-[10px]">{isUrdu ? 'مریض کا نام و ٹوکن' : 'Patient Name & Token'}</span>
                         <strong className="text-slate-900 text-sm block">{selectedApp.patientName}</strong>
-                        <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded text-[10px] font-mono inline-block mt-0.5 font-bold">
-                          🎫 {selectedApp.tokenNumber || (selectedApp.id && selectedApp.id.startsWith('APP-') ? selectedApp.id.replace('APP-', 'TK-') : 'TK-101')}
-                        </span>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded text-[10px] font-mono inline-block font-bold">
+                            🎫 {selectedApp.tokenNumber || (selectedApp.id && selectedApp.id.startsWith('APP-') ? selectedApp.id.replace('APP-', 'TK-') : 'TK-101')}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleCallPatient(selectedApp)}
+                            className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded flex items-center gap-1 shadow-xs cursor-pointer active:scale-95"
+                            title={isUrdu ? 'ٹی وی اور اسپیکر پر پکاریں' : 'Call on TV & Voice Announcement'}
+                          >
+                            <Volume2 className="w-3 h-3" />
+                            <span>{isUrdu ? 'کال' : 'Call'}</span>
+                          </button>
+                        </div>
                       </div>
                       <div>
                         <span className="text-slate-500 block text-[10px]">{isUrdu ? 'شہر / فون' : 'City / Phone'}</span>
@@ -1920,8 +2201,8 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
 
       {/* ================= MODAL: DOCTOR PATIENT REFERRAL ================= */}
       {referralModalApp && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl relative text-slate-900 border border-slate-200 text-xs">
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-4 sm:p-6 space-y-5 shadow-2xl relative text-slate-900 border border-slate-200 text-xs my-auto max-h-[92vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-slate-200 pb-3">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-amber-100 text-amber-900 rounded-xl">
@@ -2039,8 +2320,8 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
 
       {/* ================= MODAL: PRINTABLE MONEY SLIP / INVOICE ================= */}
       {selectedSlipForPrint && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 space-y-6 shadow-2xl relative text-slate-900">
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 z-50 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-4 sm:p-8 space-y-6 shadow-2xl relative text-slate-900 my-auto max-h-[92vh] overflow-y-auto">
             <div className="no-print flex justify-between items-center border-b pb-3">
               <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
                 <Receipt className="w-4 h-4 text-emerald-600" />
@@ -2376,6 +2657,48 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Official Advanced Digital Rx Modal */}
+      {isDigitalRxModalOpen && (
+        <DigitalRxModal
+          isOpen={isDigitalRxModalOpen}
+          onClose={() => setIsDigitalRxModalOpen(false)}
+          doctor={
+            currentDoctor || doctors[0] || {
+              id: 'doc-1',
+              nameUrdu: 'ڈاکٹر زیشان چوہدری',
+              nameEnglish: 'Dr. Zeeshan Chaudhry',
+              qualification: 'BEMS (Gold Medalist), MD',
+              specializationUrdu: 'ماہر امراض چشم و ہربل میڈیسن',
+              specializationEnglish: 'General Medicine & Vision Specialist',
+              experience: '12+ Years',
+              timingUrdu: 'صبح 9:00 تا دوپہر 2:00',
+              timingEnglish: '9:00 AM - 2:00 PM',
+              phone: '0300-1234567',
+              image: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=600',
+            }
+          }
+          initialPatient={
+            selectedApp
+              ? {
+                  name: selectedApp.patientName,
+                  phone: selectedApp.phone,
+                  age: (selectedApp as any).patientAge || 35,
+                  gender: (selectedApp as any).patientGender || 'Male',
+                  city: selectedApp.city,
+                  appointmentId: selectedApp.id,
+                }
+              : undefined
+          }
+          language={isUrdu ? 'urdu' : 'english'}
+          onSaved={(savedRx) => {
+            setIsDigitalRxModalOpen(false);
+            if (selectedApp) {
+              handleUpdateStatus(selectedApp.id || (selectedApp as any)._id, 'Completed');
+            }
+          }}
+        />
       )}
 
       {/* FOOTER BAR FOR DOCTOR WORKSPACE */}

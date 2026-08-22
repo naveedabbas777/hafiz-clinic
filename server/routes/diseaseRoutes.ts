@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { Disease } from '../models/Disease';
 import { getMongoConnectedStatus } from '../config/db';
+import { deleteFromCloudinary } from '../config/cloudinary';
 
 const router = Router();
 
@@ -55,13 +56,41 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
+// PUT /api/diseases/:id
+router.put('/:id', async (req: Request, res: Response) => {
+  try {
+    if (getMongoConnectedStatus()) {
+      const existing = await Disease.findById(req.params.id) || await Disease.findOne({ id: req.params.id });
+      if (existing?.image && req.body.image && existing.image !== req.body.image) {
+        deleteFromCloudinary(existing.image, 'image').catch((err) => console.error('Disease old image cleanup error:', err));
+      }
+      const updated = await Disease.findByIdAndUpdate(req.params.id, req.body, { returnDocument: 'after' });
+      return res.json({ success: true, disease: updated });
+    }
+    return res.json({ success: true, disease: { id: req.params.id, ...req.body } });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // DELETE /api/diseases/:id
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
+    const imageUrl = req.body?.imageUrl || (req.query?.imageUrl as string);
+
     if (getMongoConnectedStatus()) {
+      const disease = await Disease.findById(req.params.id) || await Disease.findOne({ id: req.params.id });
+      const targetImage = disease?.image || imageUrl;
+      if (targetImage) {
+        await deleteFromCloudinary(targetImage, 'image');
+      }
       await Disease.findByIdAndDelete(req.params.id);
+      await Disease.findOneAndDelete({ id: req.params.id });
+    } else if (imageUrl) {
+      await deleteFromCloudinary(imageUrl, 'image');
     }
-    return res.json({ success: true, message: 'Disease deleted successfully.' });
+
+    return res.json({ success: true, message: 'Disease and Cloudinary image deleted successfully.' });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }

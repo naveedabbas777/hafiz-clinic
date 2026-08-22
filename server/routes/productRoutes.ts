@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { Product } from '../models/Product';
 import { getMongoConnectedStatus } from '../config/db';
+import { deleteFromCloudinary } from '../config/cloudinary';
 
 const router = Router();
 
@@ -59,13 +60,56 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
+// PUT /api/products/:id
+router.put('/:id', async (req: Request, res: Response) => {
+  try {
+    if (getMongoConnectedStatus()) {
+      const existing = await Product.findById(req.params.id) || await Product.findOne({ id: req.params.id });
+      if (existing?.image && req.body.image && existing.image !== req.body.image) {
+        deleteFromCloudinary(existing.image, 'image').catch((err) => console.error('Product old image cleanup error:', err));
+      }
+      if (existing?.videoUrl && req.body.videoUrl && existing.videoUrl !== req.body.videoUrl) {
+        deleteFromCloudinary(existing.videoUrl, 'video').catch((err) => console.error('Product old video cleanup error:', err));
+      }
+      const updated = await Product.findByIdAndUpdate(req.params.id, req.body, { returnDocument: 'after' });
+      return res.json({ success: true, product: updated });
+    }
+    return res.json({ success: true, product: { id: req.params.id, ...req.body } });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // DELETE /api/products/:id
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
+    const imageUrl = req.body?.imageUrl || (req.query?.imageUrl as string);
+    const videoUrl = req.body?.videoUrl || (req.query?.videoUrl as string);
+
     if (getMongoConnectedStatus()) {
+      const product = await Product.findById(req.params.id) || await Product.findOne({ id: req.params.id });
+      const targetImage = product?.image || imageUrl;
+      const targetVideo = product?.videoUrl || videoUrl;
+
+      if (targetImage) {
+        await deleteFromCloudinary(targetImage, 'image');
+      }
+      if (targetVideo) {
+        await deleteFromCloudinary(targetVideo, 'video');
+      }
+
       await Product.findByIdAndDelete(req.params.id);
+      await Product.findOneAndDelete({ id: req.params.id });
+    } else {
+      if (imageUrl) {
+        await deleteFromCloudinary(imageUrl, 'image');
+      }
+      if (videoUrl) {
+        await deleteFromCloudinary(videoUrl, 'video');
+      }
     }
-    return res.json({ success: true, message: 'Product deleted successfully.' });
+
+    return res.json({ success: true, message: 'Product, image, and video deleted from Cloudinary & Database successfully.' });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }

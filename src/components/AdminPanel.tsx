@@ -1,11 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Doctor, Disease, Product, Appointment, Order, FAQItem, GalleryItem, ClinicSettings, HealthArticle, MoneySlip, MoneySlipItem, HospitalExpense } from '../types';
-import { Database, Plus, Trash2, Edit, Save, RefreshCw, ShieldCheck, ShoppingCart, Users, Activity, Sliders, Image as ImageIcon, HelpCircle, FileText, Download, CheckCircle, Clock, Upload, Lock, Cloud, Key, X, UserCheck, ShieldAlert, MessageSquare, Eye, Search, FileCheck, Paperclip, BookOpen, DollarSign, CreditCard, Printer, TrendingUp, TrendingDown, Receipt, PieChart, Calculator, ArrowLeft, Home, ExternalLink, MessageCircle, AlertTriangle, Package, Sparkles, Check } from 'lucide-react';
-import { loginApi, uploadDoctorImageApi, uploadDiseaseImageApi, uploadProductImageApi, createProductApi, checkDbStatusApi, updateDoctorApi, getUsersApi, getMessagesApi, getReportsApi } from '../services/api';
+import { Doctor, Disease, Product, Appointment, Order, FAQItem, GalleryItem, ClinicSettings, HealthArticle, MoneySlip, MoneySlipItem, HospitalExpense, StaffUser, StaffRole } from '../types';
+import { Database, Plus, Trash2, Edit, Save, RefreshCw, ShieldCheck, ShoppingCart, Users, Activity, Sliders, Image as ImageIcon, HelpCircle, FileText, Download, CheckCircle, Clock, Upload, Lock, Cloud, Key, X, UserCheck, ShieldAlert, MessageSquare, Eye, Search, FileCheck, Paperclip, BookOpen, DollarSign, CreditCard, Printer, TrendingUp, TrendingDown, Receipt, PieChart, Calculator, ArrowLeft, Home, ExternalLink, MessageCircle, AlertTriangle, Package, Sparkles, Check, Video, Play, Film, PlayCircle, Shield, Award, Stethoscope, TestTube } from 'lucide-react';
+import { loginApi, uploadDoctorImageApi, uploadDiseaseImageApi, uploadProductImageApi, uploadProductVideoApi, createProductApi, deleteProductApi, createDoctorApi, deleteDoctorApi, createDiseaseApi, deleteDiseaseApi, checkDbStatusApi, updateDoctorApi, getUsersApi, getMessagesApi, getReportsApi, fileToBase64, deleteReportApi, deleteUserApi } from '../services/api';
 import { fetchSlipsApi, saveSlipApi, deleteSlipApi, createAutoInvoiceFromAppointment, addItemToPatientInvoice, HOSPITAL_SERVICES_CATALOG } from '../services/billingService';
 import { printInvoiceHtml, printEODAuditReport, downloadInvoicePdf, printInvoicePdf, EODAuditData } from '../utils/printInvoice';
 import { openWhatsAppNotification } from '../utils/notificationDispatcher';
 import { DoctorPatientChatView } from './DoctorPatientChatView';
+import { SmartPharmacyPosView } from './SmartPharmacyPosView';
+import { PathologyLabView } from './PathologyLabView';
+import { ShiftAccountsView } from './ShiftAccountsView';
+import { OpdQueueScreenView } from './OpdQueueScreenView';
+import { IpdWardManagementView } from './IpdWardManagementView';
+import { getLocalStaffUsers, saveLocalStaffUsers, HOSPITAL_RBAC_RULES, RBACRuleDefinition } from '../data/staffData';
 
 interface AdminPanelProps {
   doctors: Doctor[];
@@ -60,7 +66,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   language = 'english',
   setLanguage,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'slips' | 'expenses' | 'eod' | 'lowstock' | 'users' | 'tracker' | 'doctors' | 'diseases' | 'products' | 'orders' | 'appointments' | 'articles' | 'settings'>('overview');
+  const [activeTab, setActiveTab] = useState<
+    | 'overview'
+    | 'ipd_ward'
+    | 'pharmacy_pos'
+    | 'pathology_lab'
+    | 'shift_accounts'
+    | 'opd_queue'
+    | 'slips'
+    | 'expenses'
+    | 'eod'
+    | 'lowstock'
+    | 'users'
+    | 'tracker'
+    | 'doctors'
+    | 'diseases'
+    | 'products'
+    | 'orders'
+    | 'appointments'
+    | 'articles'
+    | 'settings'
+  >('overview');
   const isUrdu = language === 'urdu';
 
   // 1. Patient Money Slips & Invoicing State
@@ -702,12 +728,156 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Registered Users Management State
   const [usersList, setUsersList] = useState<any[]>([
-    { _id: 'u-1', fullName: 'محمد فاروق', username: 'patient1', phone: '03001234567', role: 'patient', city: 'فیصل آباد', status: 'Active' },
-    { _id: 'u-2', fullName: 'ڈاکٹر زیشان چوہدری', username: 'doctor1', phone: '03009876543', role: 'doctor', city: 'فیصل آباد', qualification: 'MBBS, FCPS', status: 'Active' },
-    { _id: 'u-3', fullName: 'ڈاکٹر وقاص علی', username: 'doctor2', phone: '03011112222', role: 'doctor', city: 'فیصل آباد', qualification: 'DPT, Laser Specialist', status: 'Active' },
-    { _id: 'u-4', fullName: 'حافظ علی ایڈمن', username: 'admin', phone: '03008889999', role: 'admin', city: 'فیصل آباد', status: 'Active' },
+    { _id: 'u-1', fullName: 'محمد فاروق (Muhammad Farooq)', username: 'patient1', phone: '03001234567', role: 'patient', city: 'فیصل آباد', status: 'Active' },
+    { _id: 'u-2', fullName: 'تنویر احمد (Tanveer Ahmed)', username: 'patient2', phone: '03014455667', role: 'patient', city: 'لاہور', status: 'Active' },
+    { _id: 'u-3', fullName: 'زینب بی بی (Zainab Bibi)', username: 'patient3', phone: '03221122334', role: 'patient', city: 'گوجرانوالہ', status: 'Active' },
   ]);
   const [userRoleFilter, setUserRoleFilter] = useState<string>('all');
+
+  // Staff RBAC Accounts State
+  const [staffUsersList, setStaffUsersList] = useState<StaffUser[]>(() => getLocalStaffUsers());
+  const [staffSubTab, setStaffSubTab] = useState<'staff_list' | 'patient_accounts' | 'rbac_rules'>('staff_list');
+  const [staffSearchQuery, setStaffSearchQuery] = useState<string>('');
+  const [isStaffModalOpen, setIsStaffModalOpen] = useState<boolean>(false);
+  const [editingStaffId, setEditingStaffId] = useState<string | null>(null);
+
+  // Staff Form Modal State
+  const [formStaffName, setFormStaffName] = useState<string>('');
+  const [formStaffNameUrdu, setFormStaffNameUrdu] = useState<string>('');
+  const [formStaffUsername, setFormStaffUsername] = useState<string>('');
+  const [formStaffPassword, setFormStaffPassword] = useState<string>('');
+  const [formStaffRole, setFormStaffRole] = useState<StaffRole>('doctor');
+  const [formStaffDepartment, setFormStaffDepartment] = useState<string>('General OPD');
+  const [formStaffAssignedLabCat, setFormStaffAssignedLabCat] = useState<string>('Radiology / X-Ray');
+  const [formStaffQualification, setFormStaffQualification] = useState<string>('MBBS, FCPS');
+  const [formStaffPhone, setFormStaffPhone] = useState<string>('0300-1234567');
+  const [formStaffShift, setFormStaffShift] = useState<string>('08:00 AM - 02:00 PM (Morning)');
+  const [formStaffStatus, setFormStaffStatus] = useState<boolean>(true);
+  const [formStaffPermissions, setFormStaffPermissions] = useState<string[]>(['opd_consultation', 'digital_rx']);
+
+  const handleOpenAddStaffModal = () => {
+    setEditingStaffId(null);
+    setFormStaffName('');
+    setFormStaffNameUrdu('');
+    setFormStaffUsername('');
+    setFormStaffPassword('staff123');
+    setFormStaffRole('doctor');
+    setFormStaffDepartment('General OPD');
+    setFormStaffAssignedLabCat('Radiology / X-Ray');
+    setFormStaffQualification('MBBS, FCPS');
+    setFormStaffPhone('0300-1234567');
+    setFormStaffShift('08:00 AM - 02:00 PM (Morning)');
+    setFormStaffStatus(true);
+    setFormStaffPermissions(['opd_consultation', 'digital_rx']);
+    setIsStaffModalOpen(true);
+  };
+
+  const handleOpenEditStaffModal = (staff: StaffUser) => {
+    setEditingStaffId(staff.id);
+    setFormStaffName(staff.name || '');
+    setFormStaffNameUrdu(staff.nameUrdu || '');
+    setFormStaffUsername(staff.username || '');
+    setFormStaffPassword(staff.password || '');
+    setFormStaffRole(staff.role);
+    setFormStaffDepartment(staff.department || 'General Department');
+    setFormStaffAssignedLabCat(staff.assignedLabCategory || 'Radiology / X-Ray');
+    setFormStaffQualification(staff.qualification || '');
+    setFormStaffPhone(staff.phone || '');
+    setFormStaffShift(staff.shiftTiming || '08:00 AM - 02:00 PM');
+    setFormStaffStatus(staff.isActive !== false);
+    setFormStaffPermissions(staff.permissions || []);
+    setIsStaffModalOpen(true);
+  };
+
+  const handleSaveStaffUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formStaffUsername.trim() || !formStaffName.trim()) {
+      alert('Please fill in Staff Full Name and Username.');
+      return;
+    }
+
+    if (editingStaffId) {
+      const updated = staffUsersList.map((st) => {
+        if (st.id === editingStaffId) {
+          return {
+            ...st,
+            name: formStaffName,
+            nameUrdu: formStaffNameUrdu || formStaffName,
+            username: formStaffUsername.trim().toLowerCase(),
+            password: formStaffPassword || 'staff123',
+            role: formStaffRole,
+            department: formStaffDepartment,
+            assignedLabCategory: formStaffRole === 'lab_doctor' ? formStaffAssignedLabCat : undefined,
+            qualification: formStaffQualification,
+            phone: formStaffPhone,
+            shiftTiming: formStaffShift,
+            isActive: formStaffStatus,
+            permissions: formStaffPermissions,
+          };
+        }
+        return st;
+      });
+      setStaffUsersList(updated);
+      saveLocalStaffUsers(updated);
+      alert(`Staff account for ${formStaffName} updated successfully!`);
+    } else {
+      // Check duplicate username
+      if (staffUsersList.some((u) => u.username.toLowerCase() === formStaffUsername.trim().toLowerCase())) {
+        alert(`Username "${formStaffUsername}" already exists! Please choose a unique username.`);
+        return;
+      }
+      const newStaff: StaffUser = {
+        id: `staff-${Date.now()}`,
+        username: formStaffUsername.trim().toLowerCase(),
+        password: formStaffPassword || 'staff123',
+        name: formStaffName,
+        nameUrdu: formStaffNameUrdu || formStaffName,
+        role: formStaffRole,
+        department: formStaffDepartment,
+        assignedLabCategory: formStaffRole === 'lab_doctor' ? formStaffAssignedLabCat : undefined,
+        specialtyTitleEnglish: formStaffRole === 'lab_doctor' ? `${formStaffAssignedLabCat} Specialist` : formStaffDepartment,
+        qualification: formStaffQualification,
+        phone: formStaffPhone,
+        shiftTiming: formStaffShift,
+        isActive: formStaffStatus,
+        permissions: formStaffPermissions,
+      };
+      const updated = [...staffUsersList, newStaff];
+      setStaffUsersList(updated);
+      saveLocalStaffUsers(updated);
+      alert(`New staff account for ${formStaffName} created with Admin-assigned credentials & rules!`);
+    }
+
+    setIsStaffModalOpen(false);
+  };
+
+  const handleToggleStaffStatus = (staffId: string) => {
+    const updated = staffUsersList.map((st) => {
+      if (st.id === staffId) {
+        const nextStatus = !(st.isActive !== false);
+        return { ...st, isActive: nextStatus };
+      }
+      return st;
+    });
+    setStaffUsersList(updated);
+    saveLocalStaffUsers(updated);
+  };
+
+  const handleDeleteStaffAccount = (staffId: string, name: string) => {
+    if (confirm(`Are you sure you want to permanently revoke and delete the staff account for "${name}"?`)) {
+      const updated = staffUsersList.filter((st) => st.id !== staffId);
+      setStaffUsersList(updated);
+      saveLocalStaffUsers(updated);
+    }
+  };
+
+  const togglePermission = (permId: string) => {
+    if (formStaffPermissions.includes(permId)) {
+      setFormStaffPermissions(formStaffPermissions.filter((p) => p !== permId));
+    } else {
+      setFormStaffPermissions([...formStaffPermissions, permId]);
+    }
+  };
 
   // Dedicated Document & Telemedicine Tracking System State
   const [allMessages, setAllMessages] = useState<any[]>([
@@ -803,7 +973,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isUploadingDisImg, setIsUploadingDisImg] = useState(false);
   const [disUploadSuccess, setDisUploadSuccess] = useState(false);
 
-  // Product Form & Cloudinary Image State
+  // Product Form & Cloudinary Image/Video State
   const [newProdNameUrdu, setNewProdNameUrdu] = useState('');
   const [newProdNameEng, setNewProdNameEng] = useState('');
   const [newProdPrice, setNewProdPrice] = useState<number | string>(1500);
@@ -817,6 +987,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [newProdImage, setNewProdImage] = useState<string>('');
   const [isUploadingProdImg, setIsUploadingProdImg] = useState<boolean>(false);
   const [prodUploadSuccess, setProdUploadSuccess] = useState<boolean>(false);
+  const [newProdVideo, setNewProdVideo] = useState<string>('');
+  const [isUploadingProdVideo, setIsUploadingProdVideo] = useState<boolean>(false);
+  const [prodVideoUploadSuccess, setProdVideoUploadSuccess] = useState<boolean>(false);
+  const [previewVideoModalUrl, setPreviewVideoModalUrl] = useState<string | null>(null);
 
   const refreshAdminData = () => {
     getUsersApi().then((res) => {
@@ -1014,11 +1188,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     // Save to local state and trigger API
     onAddDoctor(newD);
-    fetch('/api/doctors', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newD),
-    }).catch(() => {});
+    createDoctorApi(newD).catch(() => {});
 
     setNewDocName('');
     setDocUploadSuccess(false);
@@ -1092,11 +1262,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     };
 
     onAddDisease(newDis);
-    fetch('/api/diseases', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newDis),
-    }).catch(() => {});
+    createDiseaseApi(newDis).catch(() => {});
 
     setNewDisNameUrdu('');
     setNewDisNameEng('');
@@ -1127,6 +1293,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
+  // Upload Product Video to Cloudinary / Server
+  const handleProdVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingProdVideo(true);
+    setProdVideoUploadSuccess(false);
+
+    try {
+      const res = await uploadProductVideoApi(file);
+      if (res && (res.videoUrl || res.url)) {
+        setNewProdVideo(res.videoUrl || res.url || '');
+        setProdVideoUploadSuccess(true);
+      } else {
+        const b64 = await fileToBase64(file);
+        setNewProdVideo(b64);
+        setProdVideoUploadSuccess(true);
+      }
+    } catch (err: any) {
+      try {
+        const b64 = await fileToBase64(file);
+        setNewProdVideo(b64);
+        setProdVideoUploadSuccess(true);
+      } catch {
+        alert('Video processing error: ' + (err?.message || 'Failed to upload video'));
+      }
+    } finally {
+      setIsUploadingProdVideo(false);
+    }
+  };
+
   const handleCreateProd = async () => {
     if (!newProdNameEng && !newProdNameUrdu) {
       alert('براہ کرم پروڈکٹ کا نام درج کریں (Please enter Product Name)');
@@ -1153,6 +1350,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       finalCatUrdu = customProdCatUrdu || 'خاص پروڈکٹس';
     }
 
+    const isYoutube = newProdVideo && (newProdVideo.includes('youtube.com') || newProdVideo.includes('youtu.be'));
+
     const newP: Product = {
       id: `prod-${Date.now()}`,
       nameUrdu: newProdNameUrdu || newProdNameEng,
@@ -1162,6 +1361,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       pricePKR: Number(newProdPrice) || 1500,
       originalPricePKR: newProdOrigPrice ? Number(newProdOrigPrice) : undefined,
       image: newProdImage || 'https://images.unsplash.com/photo-1608248597260-1e43d7907572?auto=format&fit=crop&q=80&w=600',
+      videoUrl: newProdVideo || undefined,
+      videoType: newProdVideo ? (isYoutube ? 'youtube' : 'direct') : undefined,
       descriptionUrdu: newProdDescUrdu || 'حافظ کلینک کی مستند ہربل فارمولیشن۔',
       descriptionEnglish: newProdDescEng || 'Organic Herbal Botanical Product',
       stock: Number(newProdStock) || 50,
@@ -1185,6 +1386,48 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setNewProdDescEng('');
     setNewProdImage('');
     setProdUploadSuccess(false);
+    setNewProdVideo('');
+    setProdVideoUploadSuccess(false);
+  };
+
+  // Delete Handlers with Cloudinary Cleanups
+  const handleDeleteDoctorAction = async (doc: Doctor) => {
+    const confirmMsg = isUrdu
+      ? `کیا آپ واقعی معالج (${doc.nameUrdu || doc.nameEnglish}) کو ڈیلیٹ کرنا چاہتے ہیں؟ اس سے منسلک تصویر بھی کلاؤڈنری سے ہمیشہ کے لیے ڈیلیٹ ہو جائے گی۔`
+      : `Are you sure you want to delete doctor "${doc.nameEnglish || doc.nameUrdu}"? Their photo will also be permanently deleted from Cloudinary.`;
+    
+    if (window.confirm && !window.confirm(confirmMsg)) return;
+
+    try {
+      await deleteDoctorApi(doc.id, doc.image);
+    } catch (e) {}
+    onDeleteDoctor(doc.id);
+  };
+
+  const handleDeleteDiseaseAction = async (dis: Disease) => {
+    const confirmMsg = isUrdu
+      ? `کیا آپ واقعی بیماری کا ریکارڈ (${dis.nameUrdu || dis.nameEnglish}) ڈیلیٹ کرنا چاہتے ہیں؟ اس کا ڈایاگرام بھی کلاؤڈنری سے ہٹ جائے گا۔`
+      : `Are you sure you want to delete disease record "${dis.nameEnglish || dis.nameUrdu}"? Its diagram image will also be removed from Cloudinary.`;
+
+    if (window.confirm && !window.confirm(confirmMsg)) return;
+
+    try {
+      await deleteDiseaseApi(dis.id, dis.image || dis.imageUrl);
+    } catch (e) {}
+    onDeleteDisease(dis.id);
+  };
+
+  const handleDeleteProductAction = async (prod: Product) => {
+    const confirmMsg = isUrdu
+      ? `کیا آپ پراڈکٹ (${prod.nameUrdu || prod.nameEnglish}) کو ڈیلیٹ کرنا چاہتے ہیں؟ اس کی کلاؤڈنری پر موجود تصویر اور ویڈیو دونوں مکمل طور پر ڈیلیٹ ہو جائیں گے۔`
+      : `Are you sure you want to delete product "${prod.nameEnglish || prod.nameUrdu}"? Its image and video will both be permanently deleted from Cloudinary.`;
+
+    if (window.confirm && !window.confirm(confirmMsg)) return;
+
+    try {
+      await deleteProductApi(prod.id, prod.image, prod.videoUrl);
+    } catch (e) {}
+    onDeleteProduct(prod.id);
   };
 
   // If Admin not authenticated, render Admin Login Form
@@ -1354,13 +1597,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <span>{isUrdu ? 'مریض کی اپائنٹمنٹ بک کریں' : 'Book for Patient'}</span>
             </button>
             {setLanguage && (
-              <button
-                type="button"
-                onClick={() => setLanguage(isUrdu ? 'english' : 'urdu')}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold px-3 py-2 rounded-xl border border-slate-700 flex items-center gap-1 shadow"
-              >
-                🌐 <span>{isUrdu ? 'English Mode' : 'اردو موڈ'}</span>
-              </button>
+              <div className="flex items-center bg-slate-900/90 border border-slate-700 p-1 rounded-xl shadow-inner gap-1">
+                <button
+                  type="button"
+                  onClick={() => setLanguage('english')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                    !isUrdu
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  English
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLanguage('urdu')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                    isUrdu
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  اردو
+                </button>
+              </div>
             )}
             <button
               onClick={() => setIsAdminAuth(false)}
@@ -1382,11 +1642,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         <div className="flex bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm overflow-x-auto text-xs font-bold gap-1">
           {[
             { id: 'overview', label: isUrdu ? '📊 ڈیش بورڈ' : '📊 Dashboard & Analytics' },
+            { id: 'ipd_ward', label: isUrdu ? '🏥 داخل مریض و وارڈ (IPD)' : '🏥 IPD & Ward Management' },
+            { id: 'pharmacy_pos', label: isUrdu ? '💊 فارمیسی و POS کاؤنٹر' : '💊 Pharmacy POS & Batches' },
+            { id: 'pathology_lab', label: isUrdu ? '🔬 پیتھالوجی و لیب ٹیسٹ' : '🔬 Pathology Lab & Tests' },
+            { id: 'shift_accounts', label: isUrdu ? '💼 شفٹ آڈٹ و ڈاکٹر شیئر' : '💼 Shift Cash & Doctor Split' },
+            { id: 'opd_queue', label: isUrdu ? '📺 لائیو او پی ڈی کیو اسکرین' : '📺 Live OPD Queue TV' },
             { id: 'slips', label: isUrdu ? `💵 منی سلپ و پیشنٹ بلز (${slipsList.length})` : `💵 Patient Invoices (${slipsList.length})` },
             { id: 'expenses', label: isUrdu ? `📉 ہسپتال اخراجات (${expensesList.length})` : `📉 Hospital Expenses (${expensesList.length})` },
             { id: 'eod', label: isUrdu ? '🔒 کیش کلوزنگ و آڈٹ (EOD)' : '🔒 EOD Cash Register Close' },
             { id: 'lowstock', label: isUrdu ? `⚠️ لو اسٹاک الرٹس (${lowStockProducts.length})` : `⚠️ Low Stock Alerts (${lowStockProducts.length})` },
-            { id: 'users', label: isUrdu ? `👥 یوزرز و اکاؤنٹس (${usersList.length})` : `👥 Registered Users (${usersList.length})` },
+            { id: 'users', label: isUrdu ? `👥 اسٹاف اکاؤنٹس و RBAC پرمیشنز (${staffUsersList.filter(u => u.role !== 'admin').length})` : `👥 Staff Accounts & RBAC Rules (${staffUsersList.filter(u => u.role !== 'admin').length})` },
             { id: 'tracker', label: isUrdu ? `📑 ڈاکومنٹس و پورٹل ٹریکر (${allReports.length + allMessages.length})` : `📑 Document & Telemedicine Tracker (${allReports.length + allMessages.length})` },
             { id: 'doctors', label: isUrdu ? `👨‍⚕️ ڈاکٹرز (${doctors.length})` : `👨‍⚕️ Doctors (${doctors.length})` },
             { id: 'diseases', label: isUrdu ? `🏥 بیماریاں (${diseases.length})` : `🏥 Diseases & Treatments (${diseases.length})` },
@@ -1407,6 +1672,63 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </button>
           ))}
         </div>
+
+        {/* IPD & Ward Management Tab */}
+        {activeTab === 'ipd_ward' && (
+          <div className="space-y-6">
+            <IpdWardManagementView
+              doctors={doctors}
+              language={isUrdu ? 'urdu' : 'english'}
+              clinicSettings={settings}
+            />
+          </div>
+        )}
+
+        {/* 1. Smart Pharmacy POS & Batch Inventory Tab */}
+        {activeTab === 'pharmacy_pos' && (
+          <div className="space-y-6">
+            <SmartPharmacyPosView
+              products={products}
+              language={isUrdu ? 'urdu' : 'english'}
+              clinicSettings={settings}
+            />
+          </div>
+        )}
+
+        {/* 2. Pathology & Diagnostic Lab Tab */}
+        {activeTab === 'pathology_lab' && (
+          <div className="space-y-6">
+            <PathologyLabView
+              language={isUrdu ? 'urdu' : 'english'}
+              clinicSettings={settings}
+            />
+          </div>
+        )}
+
+        {/* 3. Financial Shift Closing & Doctor Revenue Share Tab */}
+        {activeTab === 'shift_accounts' && (
+          <div className="space-y-6">
+            <ShiftAccountsView
+              doctors={doctors}
+              slips={slipsList}
+              expenses={expensesList}
+              language={isUrdu ? 'urdu' : 'english'}
+              clinicSettings={settings}
+            />
+          </div>
+        )}
+
+        {/* 4. OPD Waiting Room TV Screen Tab */}
+        {activeTab === 'opd_queue' && (
+          <div className="space-y-6">
+            <OpdQueueScreenView
+              doctors={doctors}
+              language={isUrdu ? 'urdu' : 'english'}
+              clinicSettings={settings}
+              onBackToApp={() => setActiveTab('overview')}
+            />
+          </div>
+        )}
 
         {/* Money Slips & Patient Invoices Tab */}
         {activeTab === 'slips' && (
@@ -2293,81 +2615,295 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
         )}
         {activeTab === 'users' && (
-          <div className="space-y-6">
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 text-slate-900">
-              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-200 pb-3">
-                <div>
-                  <h3 className="font-black text-emerald-900 text-base flex items-center gap-2">
-                    <Users className="w-5 h-5 text-emerald-600" />
-                    <span>{isUrdu ? 'تمام رجسٹرڈ یوزرز و ڈاکٹرز مینیج کریں' : 'Manage User Profiles & Doctor Accounts'}</span>
-                  </h3>
-                  <p className="text-xs text-slate-500">
-                    {isUrdu ? 'مریضوں کے اکاؤنٹس بنائیں اور حذف کریں' : 'Register and manage official hospital patient records'}
-                  </p>
+          <div className="space-y-6 text-slate-900">
+            {/* Executive Administrator Privilege Card */}
+            <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 p-6 rounded-3xl text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase">
+                    Root Administration Console
+                  </span>
+                  <span className="bg-emerald-950/80 text-emerald-200 border border-emerald-700 text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-300" />
+                    <span>RBAC Security Engine: Active</span>
+                  </span>
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-white">
+                  {isUrdu ? 'اسٹاف اکاؤنٹس، کریڈنشلز اور رول پرمیشنز کنٹرول' : 'Staff Accounts, Admin Credentials & RBAC Security'}
+                </h2>
+                <p className="text-xs text-emerald-200">
+                  {isUrdu
+                    ? 'ایڈمن کے جاری کردہ کریڈنشلز کے ذریعے عملے کا لاگ ان اور سخت پابندی شدہ اختیارات'
+                    : 'Issue official credentials, enforce role-based access bounds, and restrict staff to assigned clinical duties.'}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleOpenAddStaffModal}
+                  className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-black px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
+                >
+                  <Plus className="w-4 h-4 text-slate-950 font-black" />
+                  <span>{isUrdu ? 'نیا اسٹاف اکاؤنٹ بنائیں' : 'Issue New Staff Account'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Sub-Navigation Switcher */}
+            <div className="flex bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm gap-1 overflow-x-auto text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setStaffSubTab('staff_list')}
+                className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                  staffSubTab === 'staff_list'
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <Users className="w-4 h-4" />
+                <span>{isUrdu ? `آپریشنل اسٹاف اکاؤنٹس (${staffUsersList.filter(u => u.role !== 'admin').length})` : `Operational Staff (${staffUsersList.filter(u => u.role !== 'admin').length})`}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStaffSubTab('patient_accounts')}
+                className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                  staffSubTab === 'patient_accounts'
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <UserCheck className="w-4 h-4" />
+                <span>{isUrdu ? `رجسٹرڈ مریض اکاؤنٹس (${usersList.length})` : `Registered Patients (${usersList.length})`}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStaffSubTab('rbac_rules')}
+                className={`px-4 py-2 rounded-xl transition-colors flex items-center gap-1.5 whitespace-nowrap ${
+                  staffSubTab === 'rbac_rules'
+                    ? 'bg-emerald-700 text-white shadow-xs'
+                    : 'text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <Shield className="w-4 h-4" />
+                <span>{isUrdu ? `ہسپتال RBAC رولز و اختیارات (${HOSPITAL_RBAC_RULES.length})` : `Hospital RBAC Rules Matrix (${HOSPITAL_RBAC_RULES.length})`}</span>
+              </button>
+            </div>
+
+            {/* SUBTAB 1: OPERATIONAL STAFF LIST */}
+            {staffSubTab === 'staff_list' && (
+              <div className="space-y-4">
+                {/* Search & Filter Header */}
+                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                    <input
+                      type="text"
+                      value={staffSearchQuery}
+                      onChange={(e) => setStaffSearchQuery(e.target.value)}
+                      placeholder={isUrdu ? 'اسٹاف ممبر تلاش کریں (نام، یوزر نیم، ڈیپارٹمنٹ)...' : 'Search staff by name, username, department, or role...'}
+                      className="w-full bg-slate-50 border border-slate-300 pl-9 pr-3 py-2 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-semibold"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleOpenAddStaffModal}
+                      className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>{isUrdu ? 'اسٹاف شامل کریں' : 'Add Staff Member'}</span>
+                    </button>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs flex-wrap">
+                {/* Staff Table */}
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-slate-600 font-bold bg-slate-50">
+                          <th className="p-3.5">{isUrdu ? 'اسٹاف ممبر و شناخت' : 'Staff Member & Department'}</th>
+                          <th className="p-3.5">{isUrdu ? 'ایڈمن جاری کردہ کریڈنشلز' : 'Admin-Issued Credentials'}</th>
+                          <th className="p-3.5">{isUrdu ? 'ہسپتال رول' : 'Hospital Role'}</th>
+                          <th className="p-3.5">{isUrdu ? 'شفٹ ٹائمنگ' : 'Shift Schedule'}</th>
+                          <th className="p-3.5">{isUrdu ? 'تفویض شدہ اختیارات (Rules)' : 'Assigned RBAC Rules'}</th>
+                          <th className="p-3.5">{isUrdu ? 'اسٹیٹس' : 'Account Status'}</th>
+                          <th className="p-3.5 text-right">{isUrdu ? 'ایکشن' : 'Actions'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {staffUsersList
+                          .filter((u) => u.role !== 'admin')
+                          .filter((u) => {
+                            if (!staffSearchQuery.trim()) return true;
+                            const q = staffSearchQuery.toLowerCase();
+                            return (
+                              u.name.toLowerCase().includes(q) ||
+                              u.username.toLowerCase().includes(q) ||
+                              (u.department && u.department.toLowerCase().includes(q)) ||
+                              (u.role && u.role.toLowerCase().includes(q)) ||
+                              (u.assignedLabCategory && u.assignedLabCategory.toLowerCase().includes(q))
+                            );
+                          })
+                          .map((staff) => (
+                            <tr key={staff.id} className="border-b border-slate-100 hover:bg-slate-50/80 transition-colors">
+                              <td className="p-3.5">
+                                <div className="font-bold text-slate-900 text-sm">
+                                  {staff.name}
+                                </div>
+                                <div className="text-[11px] text-emerald-800 font-medium">
+                                  {staff.department || 'General Healthcare Unit'}
+                                  {staff.assignedLabCategory && ` • ${staff.assignedLabCategory}`}
+                                </div>
+                                {staff.qualification && (
+                                  <div className="text-[10px] text-slate-500 font-mono">
+                                    {staff.qualification} • {staff.phone}
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className="p-3.5 font-mono">
+                                <div className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-200 text-[11px] font-bold inline-block">
+                                  user: <span className="text-emerald-900 font-black">{staff.username}</span>
+                                </div>
+                                <div className="text-[10px] text-slate-500 mt-0.5">
+                                  pass: <code className="bg-slate-100 px-1 py-0.5 rounded text-amber-900 font-bold">{staff.password}</code>
+                                </div>
+                              </td>
+
+                              <td className="p-3.5">
+                                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${
+                                  staff.role === 'doctor' ? 'bg-blue-50 text-blue-800 border-blue-200' :
+                                  staff.role === 'lab_doctor' ? 'bg-purple-50 text-purple-800 border-purple-200' :
+                                  staff.role === 'nurse' ? 'bg-rose-50 text-rose-800 border-rose-200' :
+                                  staff.role === 'pharmacist' ? 'bg-amber-50 text-amber-800 border-amber-200' :
+                                  staff.role === 'ipd_incharge' ? 'bg-teal-50 text-teal-800 border-teal-200' :
+                                  'bg-slate-100 text-slate-800 border-slate-200'
+                                }`}>
+                                  {staff.role.replace('_', ' ')}
+                                </span>
+                              </td>
+
+                              <td className="p-3.5 text-slate-700 font-medium">
+                                <div className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3 text-slate-400" />
+                                  <span>{staff.shiftTiming || 'General Shift'}</span>
+                                </div>
+                              </td>
+
+                              <td className="p-3.5 max-w-xs">
+                                <div className="flex flex-wrap gap-1">
+                                  {staff.permissions && staff.permissions.length > 0 ? (
+                                    staff.permissions.map((p) => {
+                                      const matchedRule = HOSPITAL_RBAC_RULES.find((r) => r.id === p);
+                                      return (
+                                        <span
+                                          key={p}
+                                          className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded text-[9px] font-bold"
+                                          title={matchedRule ? matchedRule.descriptionEnglish : p}
+                                        >
+                                          ✓ {matchedRule ? matchedRule.nameEnglish : p}
+                                        </span>
+                                      );
+                                    })
+                                  ) : (
+                                    <span className="text-slate-400 italic text-[11px]">No active permissions</span>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td className="p-3.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleStaffStatus(staff.id)}
+                                  className={`px-2.5 py-1 rounded-full text-[10px] font-bold border transition-colors cursor-pointer ${
+                                    staff.isActive !== false
+                                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
+                                      : 'bg-rose-100 text-rose-800 border-rose-300 hover:bg-rose-200'
+                                  }`}
+                                >
+                                  {staff.isActive !== false ? '● Active' : '○ Suspended'}
+                                </button>
+                              </td>
+
+                              <td className="p-3.5 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEditStaffModal(staff)}
+                                    className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors font-bold"
+                                    title="Edit Account & Rules"
+                                  >
+                                    <Edit className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteStaffAccount(staff.id, staff.name)}
+                                    className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg transition-colors font-bold"
+                                    title="Revoke & Delete Staff Account"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SUBTAB 2: REGISTERED PATIENT ACCOUNTS */}
+            {staffSubTab === 'patient_accounts' && (
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 text-slate-900">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-200 pb-3">
+                  <div>
+                    <h3 className="font-black text-emerald-900 text-base flex items-center gap-2">
+                      <Users className="w-5 h-5 text-emerald-600" />
+                      <span>{isUrdu ? 'رجسٹرڈ مریض اکاؤنٹس (Patient Records)' : 'Registered Patient Portal Records'}</span>
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      {isUrdu ? 'مریضوں کے اکاؤنٹس کی تفصیلات اور رجسٹریشن ریکارڈ' : 'Manage registered patient accounts for medical records, portal access, and telemedicine history'}
+                    </p>
+                  </div>
+
                   <button
+                    type="button"
                     onClick={() => setIsRegPatientModalOpen(true)}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3.5 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm transition-colors"
+                    className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-colors"
                   >
                     <Plus className="w-4 h-4" />
                     <span>{isUrdu ? 'نیا مریض رجسٹر کریں' : 'Register New Patient'}</span>
                   </button>
-
-                  <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
-                    {['all', 'patient', 'doctor', 'admin'].map((role) => (
-                      <button
-                        key={role}
-                        onClick={() => setUserRoleFilter(role)}
-                        className={`px-2.5 py-1 rounded-md capitalize font-bold transition-colors text-[11px] ${
-                          userRoleFilter === role
-                            ? 'bg-emerald-700 text-white shadow-sm'
-                            : 'text-slate-600 hover:bg-slate-200'
-                        }`}
-                      >
-                        {role}
-                      </button>
-                    ))}
-                  </div>
                 </div>
-              </div>
 
-              <div className="overflow-x-auto text-xs">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-slate-500 font-bold">
-                      <th className="p-3">{isUrdu ? 'اسم گرامی' : 'Full Name'}</th>
-                      <th className="p-3">{isUrdu ? 'یوزر نیم' : 'Username'}</th>
-                      <th className="p-3">{isUrdu ? 'رول' : 'Role'}</th>
-                      <th className="p-3">{isUrdu ? 'فون' : 'Phone'}</th>
-                      <th className="p-3">{isUrdu ? 'شہر' : 'City'}</th>
-                      <th className="p-3">{isUrdu ? 'اسٹیٹس' : 'Status'}</th>
-                      <th className="p-3 text-right">{isUrdu ? 'ایکشن' : 'Action'}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {usersList
-                      .filter((u) => userRoleFilter === 'all' || u.role === userRoleFilter)
-                      .map((usr) => (
+                <div className="overflow-x-auto text-xs">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-500 font-bold bg-slate-50">
+                        <th className="p-3">{isUrdu ? 'اسم گرامی' : 'Full Name'}</th>
+                        <th className="p-3">{isUrdu ? 'یوزر نیم' : 'Username'}</th>
+                        <th className="p-3">{isUrdu ? 'فون' : 'Phone'}</th>
+                        <th className="p-3">{isUrdu ? 'شہر' : 'City'}</th>
+                        <th className="p-3">{isUrdu ? 'اسٹیٹس' : 'Status'}</th>
+                        <th className="p-3 text-right">{isUrdu ? 'ایکشن' : 'Action'}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usersList.map((usr) => (
                         <tr key={usr._id || usr.id || usr.username} className="border-b border-slate-100 hover:bg-slate-50">
                           <td className="p-3 font-bold text-slate-900">
                             {usr.name || usr.fullName || usr.username}
-                            {usr.mrn && <span className="text-[10px] text-emerald-800 font-mono block font-semibold">{usr.mrn}</span>}
-                            {usr.qualification && <span className="text-[10px] text-emerald-700 block font-normal">{usr.qualification}</span>}
                           </td>
                           <td className="p-3 font-mono text-slate-700">{usr.username || usr.email}</td>
-                          <td className="p-3">
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold capitalize ${
-                              usr.role === 'admin' ? 'bg-amber-100 text-amber-900 border border-amber-300' :
-                              usr.role === 'doctor' ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' :
-                              'bg-slate-100 text-slate-800 border border-slate-300'
-                            }`}>
-                              {usr.role}
-                            </span>
-                          </td>
                           <td className="p-3 font-mono text-slate-700">{usr.phone || 'N/A'}</td>
-                          <td className="p-3 text-slate-700">{usr.city || (isUrdu ? 'گوجرانوالہ' : 'Gujranwala')}</td>
+                          <td className="p-3 text-slate-700">{usr.city || 'Gujranwala'}</td>
                           <td className="p-3">
                             <span className="bg-emerald-100 text-emerald-900 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-200">
                               {usr.status || 'Active'}
@@ -2375,26 +2911,70 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           </td>
                           <td className="p-3 text-right">
                             <button
-                              onClick={() => {
+                              type="button"
+                              onClick={async () => {
                                 const userName = usr.name || usr.fullName || usr.username;
-                                const msg = isUrdu ? `کیا آپ واقعی ${userName} کا اکاؤنٹ حذف کرنا چاہتے ہیں؟` : `Are you sure you want to delete account for ${userName}?`;
-                                if (confirm(msg)) {
-                                  setUsersList(usersList.filter((u) => u.username !== usr.username && u.id !== usr.id));
-                                  fetch(`/api/users/${usr._id || usr.id}`, { method: 'DELETE' }).catch(() => {});
+                                if (confirm(`Are you sure you want to delete patient account for ${userName}?`)) {
+                                  const uId = usr._id || usr.id || usr.username;
+                                  setUsersList(usersList.filter((u) => u.username !== usr.username && u.id !== usr.id && (u as any)._id !== usr._id));
+                                  await deleteUserApi(uId, usr.image || usr.avatar).catch(() => {});
                                 }
                               }}
-                              className="p-1.5 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-xs font-bold transition-colors"
-                              title="Delete Account"
+                              className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-xs font-bold transition-colors"
+                              title="Delete Patient Account"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
                           </td>
                         </tr>
                       ))}
-                  </tbody>
-                </table>
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* SUBTAB 3: HOSPITAL RBAC SECURITY MATRIX */}
+            {staffSubTab === 'rbac_rules' && (
+              <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5 text-slate-900">
+                <div className="border-b border-slate-200 pb-3">
+                  <h3 className="font-black text-emerald-950 text-base flex items-center gap-2">
+                    <Shield className="w-5 h-5 text-emerald-600" />
+                    <span>{isUrdu ? 'ہسپتال رول بیسڈ ایکسس کنٹرول (RBAC) فریم ورک' : 'Hospital Role-Based Access Control (RBAC) Rules Matrix'}</span>
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {isUrdu
+                      ? 'تمام کلینیکل و آپریشنل اختیارات جنہیں ایڈمنسٹریٹر اسٹاف کے اکاؤنٹ بناتے وقت نامزد کرتا ہے'
+                      : 'Comprehensive registry of granular operational permissions assigned to staff by Executive Administration.'}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {HOSPITAL_RBAC_RULES.map((rule) => (
+                    <div key={rule.id} className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-white hover:border-emerald-300 transition-all space-y-2">
+                      <div className="flex justify-between items-start gap-2">
+                        <span className="bg-emerald-100 text-emerald-900 font-bold px-2 py-0.5 rounded text-[10px] font-mono">
+                          {rule.category}
+                        </span>
+                        <div className="flex gap-1 flex-wrap justify-end">
+                          {rule.applicableRoles.map((r) => (
+                            <span key={r} className="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-[9px] font-bold">
+                              {r}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <h4 className="font-bold text-slate-900 text-xs">{rule.nameEnglish}</h4>
+                      <p className="text-[11px] text-slate-600 leading-relaxed">{rule.descriptionEnglish}</p>
+                      <div className="text-[10px] text-emerald-800 font-semibold pt-1 border-t border-slate-200/60">
+                        {rule.descriptionUrdu}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -2564,7 +3144,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             </div>
                           )}
 
-                          <div className="text-[10px] text-slate-400 font-mono text-right">{isUrdu ? 'تاریخ:' : 'Date:'} {rep.date || '2026-08-08'}</div>
+                          <div className="flex justify-between items-center text-[10px] text-slate-400 font-mono pt-1">
+                            <span>{isUrdu ? 'تاریخ:' : 'Date:'} {rep.date || '2026-08-08'}</span>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const msg = isUrdu
+                                  ? 'کیا آپ واقعی یہ میڈیکل رپورٹ ڈیلیٹ کرنا چاہتے ہیں؟ (منسلکہ فائل Cloudinary سے بھی ڈیلیٹ ہو جائے گی)'
+                                  : 'Are you sure you want to delete this report and remove its file from Cloudinary?';
+                                if (confirm(msg)) {
+                                  const repId = rep._id || rep.id;
+                                  setAllReports((prev) => prev.filter((r) => r.id !== rep.id && (r as any)._id !== rep._id));
+                                  await deleteReportApi(repId, rep.fileUrl).catch(() => {});
+                                }
+                              }}
+                              className="p-1 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded transition-colors font-bold font-sans flex items-center gap-1 cursor-pointer"
+                              title="Delete Report & File"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>{isUrdu ? 'حذف کریں' : 'Delete'}</span>
+                            </button>
+                          </div>
                         </div>
                       ))}
                   </div>
@@ -2739,21 +3339,49 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </tr>
                   </thead>
                   <tbody>
-                    {appointments.map((app, appIdx) => (
-                      <tr key={app.id || (app as any)._id || `app-ov-${appIdx}`} className="border-b border-slate-100 hover:bg-slate-50">
-                        <td className="p-2.5 font-bold text-slate-900">{app.patientName}</td>
-                        <td className="p-2.5 font-mono text-slate-700">{app.phone}</td>
-                        <td className="p-2.5 text-slate-700">{app.city}</td>
-                        <td className="p-2.5 text-emerald-800 font-semibold">{app.problem}</td>
-                        <td className="p-2.5 text-slate-700">{app.doctorName}</td>
-                        <td className="p-2.5 text-emerald-700 font-bold">{app.timeSlot}</td>
-                        <td className="p-2.5">
-                          <span className="bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded border border-emerald-300 text-[10px] font-bold">
-                            {app.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {appointments.map((app, appIdx) => {
+                      const matchedDoc = doctors.find(
+                        (d) => d.id === app.doctorId || d.nameUrdu === app.doctorName || d.nameEnglish === app.doctorName
+                      );
+                      const displayDoc = matchedDoc
+                        ? (isUrdu ? matchedDoc.nameUrdu : matchedDoc.nameEnglish)
+                        : (isUrdu ? app.doctorName : (app.doctorName || '').replace('ڈاکٹر زیشان چوہدری', 'Dr. Zeeshan Chaudhry').replace('ڈاکٹر وقاص صغیر چوہدری', 'Dr. Waqas Sageer Chaudhry').replace('ڈاکٹر', 'Dr.'));
+                      
+                      const matchedDis = diseases.find((d) => d.nameUrdu === app.problem || d.nameEnglish === app.problem);
+                      const displayProblem = matchedDis
+                        ? (isUrdu ? matchedDis.nameUrdu : matchedDis.nameEnglish)
+                        : (isUrdu ? app.problem : (app.problem || '').replace('جوڑوں اور مہروں کا درد', 'Joint & Spine Pain').replace('کمر و مہروں کا شدید درد', 'Severe Back & Spine Pain').replace('فالج بحالی فزیوتھراپی', 'Stroke Rehab Physiotherapy').replace('آن لائن رجسٹریشن (OPD Checkup)', 'Online Registration (OPD Checkup)'));
+
+                      const displayCity = isUrdu
+                        ? app.city
+                        : (app.city || '').replace('گوجرانوالہ', 'Gujranwala').replace('لاہور', 'Lahore').replace('سیالکوٹ', 'Sialkot').replace('فیصل آباد', 'Faisalabad');
+
+                      const displayTime = isUrdu
+                        ? app.timeSlot
+                        : (app.timeSlot || '').replace('صبح', 'Morning').replace('دوپہر', 'Afternoon').replace('شام', 'Evening').replace('رات', 'Night');
+
+                      return (
+                        <tr key={app.id || (app as any)._id || `app-ov-${appIdx}`} className="border-b border-slate-100 hover:bg-slate-50">
+                          <td className="p-2.5 font-bold text-slate-900">{app.patientName}</td>
+                          <td className="p-2.5 font-mono text-slate-700">{app.phone}</td>
+                          <td className="p-2.5 text-slate-700">{displayCity}</td>
+                          <td className="p-2.5 text-emerald-800 font-semibold">{displayProblem}</td>
+                          <td className="p-2.5 text-slate-700">{displayDoc}</td>
+                          <td className="p-2.5 text-emerald-700 font-bold">{displayTime}</td>
+                          <td className="p-2.5">
+                            <span className="bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded border border-emerald-300 text-[10px] font-bold">
+                              {app.status === 'Approved'
+                                ? (isUrdu ? 'منظور شدہ' : 'Approved')
+                                : app.status === 'Completed'
+                                ? (isUrdu ? 'مکمل' : 'Completed')
+                                : app.status === 'Cancelled'
+                                ? (isUrdu ? 'منسوخ' : 'Cancelled')
+                                : (isUrdu ? 'معلق' : 'Pending')}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -2904,7 +3532,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <span className="hidden sm:inline">{isUrdu ? 'ٹائمنگ ایڈٹ' : 'Edit Timing'}</span>
                     </button>
                     <button
-                      onClick={() => onDeleteDoctor(doc.id)}
+                      onClick={() => handleDeleteDoctorAction(doc)}
                       className="p-2 bg-red-900/50 hover:bg-red-800 text-red-200 rounded-lg transition-colors"
                       title="Delete Doctor"
                     >
@@ -3212,7 +3840,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                   </div>
                   <button
-                    onClick={() => onDeleteDisease(dis.id)}
+                    onClick={() => handleDeleteDiseaseAction(dis)}
                     className="p-1.5 bg-red-900/40 text-red-300 hover:bg-red-800 rounded transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -3380,55 +4008,129 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
                 </div>
 
-                {/* Image Picker Box */}
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 flex flex-col justify-between">
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-2">
-                      {isUrdu ? 'پروڈکٹ تصویر (Cloudinary Image):' : 'Product Photo / Image:'}
+                {/* Media Pickers Box (Image & Video) */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-4 flex flex-col justify-between">
+                  {/* Photo Section */}
+                  <div className="space-y-2 border-b border-slate-200 pb-3">
+                    <label className="block font-bold text-slate-700 text-xs">
+                      {isUrdu ? '1. پروڈکٹ تصویر (Cloudinary Image):' : '1. Product Photo / Image:'}
                     </label>
 
-                    {newProdImage ? (
-                      <div className="relative w-32 h-32 rounded-2xl overflow-hidden border-2 border-emerald-500 mx-auto bg-white shadow-sm">
-                        <img src={newProdImage} alt="Product preview" className="w-full h-full object-cover" />
-                        {prodUploadSuccess && (
-                          <span className="absolute bottom-0 inset-x-0 bg-emerald-600 text-white text-[9px] font-bold text-center py-0.5">
-                            Uploaded
-                          </span>
-                        )}
+                    <div className="flex items-center gap-3">
+                      {newProdImage ? (
+                        <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-emerald-500 bg-white shadow-sm shrink-0">
+                          <img src={newProdImage} alt="Product preview" className="w-full h-full object-cover" />
+                          {prodUploadSuccess && (
+                            <span className="absolute bottom-0 inset-x-0 bg-emerald-600 text-white text-[8px] font-bold text-center py-0.5">
+                              Uploaded
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 p-1 text-center text-[9px] bg-white shrink-0">
+                          <ImageIcon className="w-6 h-6 text-slate-400 mb-0.5" />
+                          <span>{isUrdu ? 'کوئی تصویر نہیں' : 'No photo'}</span>
+                        </div>
+                      )}
+
+                      <div className="flex-1 space-y-1.5">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          id="prod-img-input"
+                          onChange={handleProdImageUpload}
+                          className="hidden"
+                        />
+                        <label
+                          htmlFor="prod-img-input"
+                          className="w-full bg-teal-700 hover:bg-teal-600 text-white font-bold py-1.5 px-3 rounded-lg cursor-pointer flex items-center justify-center gap-1.5 text-xs shadow"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>{isUploadingProdImg ? 'Uploading...' : isUrdu ? 'تصویر اپلوڈ کریں' : 'Upload Photo'}</span>
+                        </label>
+
+                        <input
+                          type="text"
+                          placeholder={isUrdu ? 'یا Image URL درج کریں...' : 'Or enter Image URL...'}
+                          value={newProdImage}
+                          onChange={(e) => setNewProdImage(e.target.value)}
+                          className="w-full bg-white border border-slate-300 p-1.5 rounded-lg text-[10px] text-slate-800 font-mono"
+                        />
                       </div>
-                    ) : (
-                      <div className="w-32 h-32 rounded-2xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center mx-auto text-slate-400 p-2 text-center text-[10px] bg-white">
-                        <ImageIcon className="w-8 h-8 mb-1 text-slate-400" />
-                        <span>{isUrdu ? 'کوئی تصویر نہیں چنی گئی' : 'No photo selected'}</span>
-                      </div>
-                    )}
+                    </div>
                   </div>
 
+                  {/* Video Section */}
                   <div className="space-y-2">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      id="prod-img-input"
-                      onChange={handleProdImageUpload}
-                      className="hidden"
-                    />
-                    <label
-                      htmlFor="prod-img-input"
-                      className="w-full bg-teal-700 hover:bg-teal-600 text-white font-bold py-2 px-3 rounded-xl cursor-pointer flex items-center justify-center gap-1.5 text-xs text-center shadow"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>{isUploadingProdImg ? 'Uploading photo...' : isUrdu ? 'تصویر اپلوڈ کریں' : 'Upload Product Photo'}</span>
-                    </label>
+                    <div className="flex justify-between items-center">
+                      <label className="block font-bold text-slate-700 text-xs">
+                        {isUrdu ? '2. پروڈکٹ ویڈیو (Product Video - MP4 / YouTube):' : '2. Product Video (Video / MP4 / YouTube):'}
+                      </label>
+                      {newProdVideo && (
+                        <button
+                          type="button"
+                          onClick={() => { setNewProdVideo(''); setProdVideoUploadSuccess(false); }}
+                          className="text-[10px] text-rose-600 hover:underline font-bold"
+                        >
+                          {isUrdu ? 'ویڈیو ہٹائیں' : 'Remove Video'}
+                        </button>
+                      )}
+                    </div>
 
-                    <div className="pt-1">
-                      <label className="block text-[10px] text-slate-500 mb-0.5">{isUrdu ? 'یا تصویر کا URL درج کریں:' : 'Or enter direct Image URL:'}</label>
-                      <input
-                        type="text"
-                        placeholder="https://..."
-                        value={newProdImage}
-                        onChange={(e) => setNewProdImage(e.target.value)}
-                        className="w-full bg-white border border-slate-300 p-2 rounded-lg text-[10px] text-slate-800 font-mono"
-                      />
+                    <div className="flex items-center gap-3">
+                      {newProdVideo ? (
+                        <div className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-emerald-600 bg-slate-950 flex items-center justify-center shrink-0 shadow-sm group">
+                          {newProdVideo.includes('youtube.com') || newProdVideo.includes('youtu.be') ? (
+                            <div className="flex flex-col items-center justify-center text-rose-500">
+                              <PlayCircle className="w-8 h-8" />
+                              <span className="text-[8px] text-white font-bold mt-0.5">YouTube</span>
+                            </div>
+                          ) : (
+                            <video src={newProdVideo} className="w-full h-full object-cover" muted />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setPreviewVideoModalUrl(newProdVideo)}
+                            className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Play Video"
+                          >
+                            <Play className="w-6 h-6 text-white drop-shadow" />
+                          </button>
+                          <span className="absolute bottom-0 inset-x-0 bg-emerald-600 text-white text-[8px] font-bold text-center py-0.5">
+                            Video Ready
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 p-1 text-center text-[9px] bg-white shrink-0">
+                          <Film className="w-6 h-6 text-slate-400 mb-0.5" />
+                          <span>{isUrdu ? 'کوئی ویڈیو نہیں' : 'No video'}</span>
+                        </div>
+                      )}
+
+                      <div className="flex-1 space-y-1.5">
+                        <input
+                          type="file"
+                          accept="video/*"
+                          id="prod-video-input"
+                          onChange={handleProdVideoUpload}
+                          className="hidden"
+                        />
+                        <label
+                          htmlFor="prod-video-input"
+                          className="w-full bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-1.5 px-3 rounded-lg cursor-pointer flex items-center justify-center gap-1.5 text-xs shadow"
+                        >
+                          <Video className="w-3.5 h-3.5" />
+                          <span>{isUploadingProdVideo ? 'Uploading Video...' : isUrdu ? 'ویڈیو اپلوڈ کریں' : 'Upload Video File'}</span>
+                        </label>
+
+                        <input
+                          type="text"
+                          placeholder={isUrdu ? 'یا ویڈیو URL / YouTube لنک درج کریں...' : 'Or enter Video / YouTube URL...'}
+                          value={newProdVideo}
+                          onChange={(e) => setNewProdVideo(e.target.value)}
+                          className="w-full bg-white border border-slate-300 p-1.5 rounded-lg text-[10px] text-slate-800 font-mono"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -3450,34 +4152,120 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-xs">
               {products.map((p, pIdx) => (
                 <div key={p.id || (p as any)._id || `prod-${pIdx}`} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center gap-3">
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={p.image || 'https://images.unsplash.com/photo-1608248597260-1e43d7907572?auto=format&fit=crop&q=80&w=600'}
-                      alt={p.nameEnglish}
-                      className="w-14 h-14 rounded-xl object-cover border border-slate-200 shrink-0"
-                    />
-                    <div>
-                      <div className="font-bold text-slate-900 text-sm">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="relative w-14 h-14 shrink-0">
+                      <img
+                        src={p.image || 'https://images.unsplash.com/photo-1608248597260-1e43d7907572?auto=format&fit=crop&q=80&w=600'}
+                        alt={p.nameEnglish}
+                        className="w-14 h-14 rounded-xl object-cover border border-slate-200"
+                      />
+                      {p.videoUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewVideoModalUrl(p.videoUrl || null)}
+                          className="absolute -bottom-1 -right-1 bg-emerald-700 text-white p-1 rounded-full shadow hover:bg-emerald-600 transition-transform hover:scale-110"
+                          title="Watch Product Video"
+                        >
+                          <Play className="w-2.5 h-2.5 fill-current" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-bold text-slate-900 text-sm truncate">
                         {isUrdu ? p.nameUrdu : p.nameEnglish}
                       </div>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
                         <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[10px] font-bold border border-emerald-300">
                           {isUrdu ? p.categoryUrdu || p.category : p.category}
                         </span>
                         <span className="text-amber-700 font-black">Rs. {p.pricePKR}</span>
+                        {p.videoUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setPreviewVideoModalUrl(p.videoUrl || null)}
+                            className="bg-purple-100 text-purple-800 hover:bg-purple-200 px-1.5 py-0.5 rounded text-[9px] font-bold flex items-center gap-1 border border-purple-300"
+                          >
+                            <Film className="w-2.5 h-2.5" />
+                            <span>{isUrdu ? 'ویڈیو' : 'Video'}</span>
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
-                  <button
-                    onClick={() => onDeleteProduct(p.id)}
-                    className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg transition-colors border border-rose-200"
-                    title="Delete Product"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {p.videoUrl && (
+                      <button
+                        onClick={() => setPreviewVideoModalUrl(p.videoUrl || null)}
+                        className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition-colors border border-emerald-200"
+                        title={isUrdu ? 'ویڈیو دیکھیں' : 'Play Video'}
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDeleteProductAction(p)}
+                      className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg transition-colors border border-rose-200"
+                      title="Delete Product"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
+
+            {/* Video Playback Modal */}
+            {previewVideoModalUrl && (
+              <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-slate-900 text-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-700 space-y-4">
+                  <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Film className="w-5 h-5 text-emerald-400" />
+                      <h4 className="font-bold text-sm text-white">
+                        {isUrdu ? 'پروڈکٹ ڈیمو ویڈیو پلے بیک' : 'Product Video Player Preview'}
+                      </h4>
+                    </div>
+                    <button
+                      onClick={() => setPreviewVideoModalUrl(null)}
+                      className="p-1 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="aspect-video w-full rounded-2xl overflow-hidden bg-black flex items-center justify-center">
+                    {previewVideoModalUrl.includes('youtube.com') || previewVideoModalUrl.includes('youtu.be') ? (
+                      <iframe
+                        src={previewVideoModalUrl.replace('watch?v=', 'embed/').replace('youtu.be/', 'www.youtube.com/embed/')}
+                        title="Product Video"
+                        className="w-full h-full border-0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                    ) : (
+                      <video
+                        src={previewVideoModalUrl}
+                        controls
+                        autoPlay
+                        className="w-full h-full object-contain"
+                      >
+                        Your browser does not support the video tag.
+                      </video>
+                    )}
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs text-slate-400 pt-2 border-t border-slate-800">
+                    <span className="font-mono text-[11px] truncate max-w-md">{previewVideoModalUrl}</span>
+                    <button
+                      onClick={() => setPreviewVideoModalUrl(null)}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2 rounded-xl"
+                    >
+                      {isUrdu ? 'بند کریں' : 'Close Player'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -3621,10 +4409,67 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           )}
                         </td>
                         <td className="p-2.5 font-mono text-slate-600">{app.phone}</td>
-                        <td className="p-2.5 text-slate-700">{app.city}</td>
-                        <td className="p-2.5 text-emerald-800 font-semibold">{app.problem}</td>
-                        <td className="p-2.5 text-slate-800 font-medium">{app.doctorName}</td>
-                        <td className="p-2.5 text-amber-800 font-mono font-bold">{app.date} | {app.timeSlot}</td>
+                        <td className="p-2.5 text-slate-700">
+                          {(() => {
+                            if (isUrdu) return app.city;
+                            const cityMap: Record<string, string> = {
+                              'گوجرانوالہ': 'Gujranwala',
+                              'لاہور': 'Lahore',
+                              'سیالکوٹ': 'Sialkot',
+                              'فیصل آباد': 'Faisalabad',
+                              'اسلام آباد': 'Islamabad',
+                              'راولپنڈی': 'Rawalpindi',
+                              'ملتان': 'Multan',
+                              'پشاور': 'Peshawar',
+                              'کراچی': 'Karachi',
+                            };
+                            return cityMap[app.city] || app.city;
+                          })()}
+                        </td>
+                        <td className="p-2.5 text-emerald-800 font-semibold">
+                          {(() => {
+                            if (isUrdu) return app.problem;
+                            const matchedDis = diseases.find((d) => d.nameUrdu === app.problem || d.nameEnglish === app.problem);
+                            if (matchedDis) return matchedDis.nameEnglish;
+                            const problemMap: Record<string, string> = {
+                              'جوڑوں اور مہروں کا درد': 'Joint & Spine Pain',
+                              'کمر و مہروں کا شدید درد': 'Severe Back & Spine Pain',
+                              'فالج بحالی فزیوتھراپی': 'Stroke Rehab Physiotherapy',
+                              'آن لائن رجسٹریشن (OPD Checkup)': 'Online Registration (OPD Checkup)',
+                              'رجسٹرڈ بیمار (OPD Checkup)': 'Registered Patient (OPD Checkup)',
+                            };
+                            return problemMap[app.problem] || app.problem;
+                          })()}
+                        </td>
+                        <td className="p-2.5 text-slate-800 font-medium">
+                          {(() => {
+                            const matchedDoc = doctors.find(
+                              (d) => d.id === app.doctorId || d.nameUrdu === app.doctorName || d.nameEnglish === app.doctorName
+                            );
+                            if (matchedDoc) {
+                              return isUrdu ? matchedDoc.nameUrdu : matchedDoc.nameEnglish;
+                            }
+                            if (!isUrdu && app.doctorName) {
+                              return app.doctorName
+                                .replace('ڈاکٹر زیشان چوہدری', 'Dr. Zeeshan Chaudhry')
+                                .replace('ڈاکٹر وقاص صغیر چوہدری', 'Dr. Waqas Sageer Chaudhry')
+                                .replace('ڈاکٹر وقاص صغیر', 'Dr. Waqas Sageer')
+                                .replace('ڈاکٹر', 'Dr.');
+                            }
+                            return app.doctorName;
+                          })()}
+                        </td>
+                        <td className="p-2.5 text-amber-800 font-mono font-bold">
+                          {app.date} | {(() => {
+                            if (!app.timeSlot) return '';
+                            if (isUrdu) return app.timeSlot;
+                            return app.timeSlot
+                              .replace('صبح', 'Morning')
+                              .replace('دوپہر', 'Afternoon')
+                              .replace('شام', 'Evening')
+                              .replace('رات', 'Night');
+                          })()}
+                        </td>
                         <td className="p-2.5">
                           <span className={`px-2.5 py-1 rounded-md border text-[10px] font-bold inline-block ${
                             app.status === 'Approved'
@@ -3635,7 +4480,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               ? 'bg-rose-100 text-rose-800 border-rose-300'
                               : 'bg-amber-100 text-amber-800 border-amber-300'
                           }`}>
-                            {app.status === 'Approved' ? '✓ Approved (منظور شدہ)' : app.status === 'Completed' ? '✓ Completed (مکمل)' : app.status === 'Cancelled' ? '✕ Cancelled (منسوخ)' : '⏳ Pending (معلق)'}
+                            {app.status === 'Approved'
+                              ? (isUrdu ? '✓ منظور شدہ (Approved)' : '✓ Approved')
+                              : app.status === 'Completed'
+                              ? (isUrdu ? '✓ مکمل (Completed)' : '✓ Completed')
+                              : app.status === 'Cancelled'
+                              ? (isUrdu ? '✕ منسوخ (Cancelled)' : '✕ Cancelled')
+                              : (isUrdu ? '⏳ معلق (Pending)' : '⏳ Pending')}
                           </span>
                         </td>
                         <td className="p-2.5 text-center">
@@ -3697,6 +4548,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               <span>{isUrdu ? 'سروس' : 'Service'}</span>
                             </button>
                             <button
+                              type="button"
                               onClick={() => {
                                 const targetId = app.id || (app as any)._id;
                                 if (onUpdateAppointmentStatus && targetId) onUpdateAppointmentStatus(targetId, 'Approved');
@@ -3705,29 +4557,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 }).catch(() => {});
                               }}
                               className="bg-emerald-700 hover:bg-emerald-800 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-xs"
-                              title="منظور کریں"
+                              title={isUrdu ? 'منظور کریں' : 'Approve Appointment'}
                             >
-                              منظور
+                              {isUrdu ? 'منظور' : 'Approve'}
                             </button>
                             <button
+                              type="button"
                               onClick={() => {
                                 const targetId = app.id || (app as any)._id;
                                 if (onUpdateAppointmentStatus && targetId) onUpdateAppointmentStatus(targetId, 'Completed');
                               }}
                               className="bg-teal-700 hover:bg-teal-800 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-xs"
-                              title="مکمل کریں"
+                              title={isUrdu ? 'مکمل کریں' : 'Mark as Completed'}
                             >
-                              مکمل
+                              {isUrdu ? 'مکمل' : 'Complete'}
                             </button>
                             <button
+                              type="button"
                               onClick={() => {
                                 const targetId = app.id || (app as any)._id;
                                 if (onUpdateAppointmentStatus && targetId) onUpdateAppointmentStatus(targetId, 'Cancelled');
                               }}
                               className="bg-rose-100 hover:bg-rose-200 text-rose-800 text-[10px] font-bold px-2.5 py-1 rounded-lg border border-rose-300 transition-colors cursor-pointer"
-                              title="منسوخ کریں"
+                              title={isUrdu ? 'منسوخ کریں' : 'Cancel Appointment'}
                             >
-                              منسوخ
+                              {isUrdu ? 'منسوخ' : 'Cancel'}
                             </button>
                           </div>
                         </td>
@@ -4132,7 +4986,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                 <div>
                   <label className="block text-slate-700 mb-1">
-                    {isUrdu ? 'فوری اسٹیٹس (Approval Status)' : 'Initial Status'}
+                    {isUrdu ? 'منظوری اسٹیٹس (Approval Status)' : 'Initial Status'}
                   </label>
                   <div className="flex gap-3">
                     <label className="flex items-center gap-2 cursor-pointer bg-slate-50 border border-slate-300 p-2.5 rounded-xl flex-1">
@@ -4144,7 +4998,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         onChange={() => setBookStatus('Approved')}
                         className="text-emerald-600 focus:ring-emerald-500"
                       />
-                      <span className="text-emerald-800 font-bold">✓ Approved Immediately (منظور شدہ)</span>
+                      <span className="text-emerald-800 font-bold">✓ Approved (منظور شدہ)</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer bg-slate-50 border border-slate-300 p-2.5 rounded-xl flex-1">
                       <input
@@ -4275,6 +5129,326 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   >
                     <Plus className="w-4 h-4" />
                     <span>{isUrdu ? 'اکاؤنٹ بنائیں' : 'Create Patient Record'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Add or Edit Staff Account & Assign RBAC Rules */}
+        {isStaffModalOpen && (
+          <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+            <div className="bg-white border border-slate-200 w-full max-w-2xl rounded-3xl p-6 text-slate-900 space-y-5 shadow-2xl relative my-8">
+              <button
+                type="button"
+                onClick={() => setIsStaffModalOpen(false)}
+                className="absolute top-5 right-5 text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-3 border-b border-slate-200 pb-4">
+                <div className="w-11 h-11 bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-2xl flex items-center justify-center font-bold">
+                  <ShieldCheck className="w-6 h-6 text-emerald-800" />
+                </div>
+                <div>
+                  <h3 className="font-black text-lg text-emerald-950">
+                    {editingStaffId
+                      ? (isUrdu ? 'اسٹاف ممبر اکاؤنٹ اور رولز میں ترمیم کریں' : 'Edit Staff Account & RBAC Permissions')
+                      : (isUrdu ? 'نیا اسٹاف اکاؤنٹ بنائیں اور اختیارات تفویض کریں' : 'Issue New Staff Account & Assign RBAC Rules')}
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    {isUrdu
+                      ? 'ایڈمن کے جاری کردہ لاگ ان کریڈنشلز اور سخت پابندیاں'
+                      : 'Define login credentials and enforce strict, role-bounded permissions for this staff member.'}
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={handleSaveStaffUser} className="space-y-4 text-xs font-semibold">
+                {/* Name fields */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-700 mb-1">
+                      {isUrdu ? 'اسٹاف ممبر کا پورا نام (English)' : 'Staff Full Name (English)'} <span className="text-rose-600">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formStaffName}
+                      onChange={(e) => setFormStaffName(e.target.value)}
+                      placeholder="e.g. Dr. Asim Raza"
+                      className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 mb-1">
+                      {isUrdu ? 'نام اردو میں' : 'Staff Name (Urdu)'}
+                    </label>
+                    <input
+                      type="text"
+                      value={formStaffNameUrdu}
+                      onChange={(e) => setFormStaffNameUrdu(e.target.value)}
+                      placeholder="مثال: ڈاکٹر عاصم رضا"
+                      className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Credentials */}
+                <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200 space-y-3">
+                  <div className="flex items-center gap-2 text-amber-900 font-black text-xs">
+                    <Key className="w-4 h-4 text-amber-700" />
+                    <span>{isUrdu ? 'ایڈمن جاری کردہ لاگ ان کریڈنشلز (Login Credentials)' : 'Admin-Issued Login Credentials'}</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-amber-950 mb-1">
+                        {isUrdu ? 'یوزر نیم (Unique Username)' : 'Username'} <span className="text-rose-600">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={formStaffUsername}
+                        onChange={(e) => setFormStaffUsername(e.target.value)}
+                        placeholder="e.g. dr_asim"
+                        className="w-full bg-white border border-amber-300 p-2.5 rounded-xl text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-amber-950 mb-1">
+                        {isUrdu ? 'پاس ورڈ (Assigned Password)' : 'Assigned Password'} <span className="text-rose-600">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={formStaffPassword}
+                        onChange={(e) => setFormStaffPassword(e.target.value)}
+                        placeholder="e.g. staff123"
+                        className="w-full bg-white border border-amber-300 p-2.5 rounded-xl text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-amber-800">
+                    {isUrdu
+                      ? 'یہ یوزر نیم اور پاس ورڈ اسٹاف ممبر کو جاری کریں، وہ پورٹل میں صرف انہی سے لاگ ان کر سکے گا۔'
+                      : 'Staff members authenticate exclusively with these admin-issued credentials.'}
+                  </p>
+                </div>
+
+                {/* Role, Department, Shift */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-slate-700 mb-1">
+                      {isUrdu ? 'ہسپتال رول' : 'Hospital Role'} <span className="text-rose-600">*</span>
+                    </label>
+                    <select
+                      value={formStaffRole}
+                      onChange={(e) => {
+                        const newRole = e.target.value as StaffRole;
+                        setFormStaffRole(newRole);
+                        // Auto-suggest permissions
+                        if (newRole === 'doctor') {
+                          setFormStaffPermissions(['opd_consultation', 'digital_rx', 'opd_queue_call']);
+                          setFormStaffDepartment('Consultant Clinic');
+                        } else if (newRole === 'lab_doctor') {
+                          setFormStaffPermissions(['pathology_blood_tests', 'radiology_reporting', 'ultrasound_reporting', 'eye_diagnostics_report']);
+                          setFormStaffDepartment('Diagnostics Department');
+                        } else if (newRole === 'nurse') {
+                          setFormStaffPermissions(['nursing_vitals_sheet', 'iv_fluid_administration', 'nursing_mar_chart']);
+                          setFormStaffDepartment('IPD Nursing Ward');
+                        } else if (newRole === 'pharmacist') {
+                          setFormStaffPermissions(['pos_billing', 'stock_batches', 'pharmacy_dispensing']);
+                          setFormStaffDepartment('Hospital Main Pharmacy');
+                        } else if (newRole === 'ipd_incharge') {
+                          setFormStaffPermissions(['bed_allocation', 'ipd_discharge', 'ward_shift_incharge']);
+                          setFormStaffDepartment('Inpatient Ward Admissions');
+                        } else if (newRole === 'receptionist') {
+                          setFormStaffPermissions(['opd_queue_call', 'patient_token_issue']);
+                          setFormStaffDepartment('Front Desk Reception');
+                        }
+                      }}
+                      className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold"
+                    >
+                      <option value="doctor">OPD Doctor (معالج)</option>
+                      <option value="lab_doctor">Lab / Diagnostics Specialist (لیب ڈاکٹر)</option>
+                      <option value="nurse">Nurse / Ward Staff (نرسنگ عملہ)</option>
+                      <option value="pharmacist">Pharmacist (فارمیسی انچارج)</option>
+                      <option value="ipd_incharge">IPD / Ward Incharge (وارڈ انچارج)</option>
+                      <option value="receptionist">Receptionist / Queue Caller (ریسیپشن)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 mb-1">
+                      {isUrdu ? 'ڈیپارٹمنٹ / شعبہ' : 'Assigned Department'}
+                    </label>
+                    <input
+                      type="text"
+                      value={formStaffDepartment}
+                      onChange={(e) => setFormStaffDepartment(e.target.value)}
+                      placeholder="e.g. Cardiology OPD"
+                      className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 mb-1">
+                      {isUrdu ? 'شفٹ شیڈول' : 'Shift Timing'}
+                    </label>
+                    <input
+                      type="text"
+                      value={formStaffShift}
+                      onChange={(e) => setFormStaffShift(e.target.value)}
+                      placeholder="08:00 AM - 02:00 PM"
+                      className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-mono font-semibold"
+                    />
+                  </div>
+                </div>
+
+                {/* If Lab Doctor: Select Assigned Specialty/Test Section */}
+                {formStaffRole === 'lab_doctor' && (
+                  <div className="bg-purple-50/80 p-3.5 rounded-2xl border border-purple-200 space-y-2">
+                    <label className="block text-purple-950 font-bold">
+                      {isUrdu ? 'نامزد تشخیصی و لیب کیٹیگری (Assigned Lab Category)' : 'Assigned Diagnostics / Lab Category'}
+                    </label>
+                    <select
+                      value={formStaffAssignedLabCat}
+                      onChange={(e) => setFormStaffAssignedLabCat(e.target.value)}
+                      className="w-full bg-white border border-purple-300 p-2.5 rounded-xl text-purple-950 font-bold"
+                    >
+                      <option value="Radiology / X-Ray">Digital X-Ray & Radiology (ایکسرے)</option>
+                      <option value="Pathology & Blood Tests">Pathology & Blood Diagnostics (خون و پیتھالوجی)</option>
+                      <option value="Ultrasound & Imaging">Ultrasound & Color Doppler (الٹراساؤنڈ)</option>
+                      <option value="Optometry & Eye Diagnostics">Optometry & Eye Testing (آنکھوں کے ٹیسٹ)</option>
+                      <option value="ECG & Cardiology">ECG & Cardiac Diagnostics (دل کا معائنہ)</option>
+                    </select>
+                    <p className="text-[10px] text-purple-800">
+                      {isUrdu
+                        ? 'یہ ڈاکٹر صرف اپنے نامزد تشخیصی ٹیسٹوں کی رپورٹس تیار و تصدیق کر سکے گا۔'
+                        : 'This diagnostic doctor will be strictly restricted to managing tests within this assigned specialty.'}
+                    </p>
+                  </div>
+                )}
+
+                {/* Qualification & Phone */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-700 mb-1">
+                      {isUrdu ? 'تعلیمی قابلیت (Qualification)' : 'Qualification'}
+                    </label>
+                    <input
+                      type="text"
+                      value={formStaffQualification}
+                      onChange={(e) => setFormStaffQualification(e.target.value)}
+                      placeholder="MBBS, FCPS / B-Pharmacy / Post-RN"
+                      className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 mb-1">
+                      {isUrdu ? 'موبائل نمبر (Official Phone)' : 'Contact Phone'}
+                    </label>
+                    <input
+                      type="text"
+                      value={formStaffPhone}
+                      onChange={(e) => setFormStaffPhone(e.target.value)}
+                      placeholder="0300-1234567"
+                      className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* RBAC Permissions Matrix Checkboxes */}
+                <div className="space-y-2 pt-2 border-t border-slate-200">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h4 className="font-black text-slate-900 text-xs">
+                        {isUrdu ? 'تفویض شدہ RBAC رولز و پابندیاں (Granted Permissions)' : 'Assigned Granular RBAC Permissions'}
+                      </h4>
+                      <p className="text-[10px] text-slate-500">
+                        {isUrdu ? 'صرف وہ اختیارات ٹک کریں جو اس اسٹاف کو دینا چاہتے ہیں' : 'Select only the specific operational capabilities this staff member is permitted to execute.'}
+                      </p>
+                    </div>
+
+                    <span className="bg-emerald-100 text-emerald-900 font-bold px-2 py-0.5 rounded text-[10px] font-mono">
+                      {formStaffPermissions.length} rules assigned
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border border-slate-200 rounded-2xl bg-slate-50/50">
+                    {HOSPITAL_RBAC_RULES.map((rule) => {
+                      const isChecked = formStaffPermissions.includes(rule.id);
+                      return (
+                        <label
+                          key={rule.id}
+                          className={`flex items-start gap-2.5 p-2 rounded-xl border transition-all cursor-pointer ${
+                            isChecked
+                              ? 'bg-emerald-50/80 border-emerald-300 text-emerald-950'
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => togglePermission(rule.id)}
+                            className="mt-0.5 rounded text-emerald-600 focus:ring-emerald-500"
+                          />
+                          <div className="text-[11px] leading-tight">
+                            <div className="font-bold flex items-center gap-1">
+                              <span>{rule.nameEnglish}</span>
+                              <span className="text-[9px] bg-slate-100 text-slate-600 px-1 py-0.2 rounded font-mono">
+                                {rule.category}
+                              </span>
+                            </div>
+                            <div className="text-[9px] text-slate-500 mt-0.5">
+                              {rule.nameUrdu}
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Status Switch */}
+                <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                  <div>
+                    <span className="font-bold text-slate-900 text-xs">Account Status</span>
+                    <p className="text-[10px] text-slate-500">Allow this staff user to sign in to the portal</p>
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formStaffStatus}
+                      onChange={(e) => setFormStaffStatus(e.target.checked)}
+                      className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                    />
+                    <span className={`text-xs font-bold ${formStaffStatus ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {formStaffStatus ? 'Active & Enabled' : 'Suspended'}
+                    </span>
+                  </label>
+                </div>
+
+                {/* Actions */}
+                <div className="pt-3 flex justify-end gap-2 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setIsStaffModalOpen(false)}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-4 py-2 rounded-xl transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-6 py-2 rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>{editingStaffId ? 'Save Staff Changes' : 'Issue & Activate Account'}</span>
                   </button>
                 </div>
               </form>

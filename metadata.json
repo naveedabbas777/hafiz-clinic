@@ -1,6 +1,6 @@
 {
   "name": "Hafiz Clinic - Website & Requirements System",
-  "description": "Comprehensive Hafiz Clinic (حافظ کلینک) web application featuring bilingual Urdu/English healthcare portal, online store, appointment booking, patient/doctor/admin portals, and PDF requirements generator.",
+  "description": "Official Hafiz Clinic (حافظ کلینک) hospital ERP and telehealth suite featuring bilingual Urdu/English patient care, role-based access control (RBAC) with dedicated portals for Admin, OPD Doctors, IPD & Ward Incharge, Inpatient Nursing Care (4-hourly vitals sheet), Pharmacy POS, and Specialized Diagnostic Lab Doctors (Digital X-Ray, Pathology/Blood, Computerized Eye Scan, Ultrasound), live OPD queue TV display, shift audits, and online herbal store.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

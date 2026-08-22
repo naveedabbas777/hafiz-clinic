@@ -1,11 +1,15 @@
 import { Appointment, MoneySlip } from '../types';
 
 export interface DispatchNotificationParams {
-  type: 'appointment_confirm' | 'slip_receipt' | 'rx_advisory' | 'lab_ready' | 'custom';
+  type: 'appointment_confirm' | 'diagnostic_appointment' | 'slip_receipt' | 'rx_advisory' | 'lab_ready' | 'custom';
   recipientPhone?: string;
   recipientName?: string;
   patientName?: string;
   doctorName?: string;
+  departmentName?: string;
+  testName?: string;
+  testFee?: number;
+  testInstructions?: string;
   tokenNumber?: number | string;
   date?: string;
   appointmentDate?: string;
@@ -72,6 +76,38 @@ Location: Hafiz Clinic, Wazirabad Road, Gujranwala
 Helpline: 0300-6428789
 
 Please arrive 10 minutes prior to your time. Thank you!`,
+      };
+
+    case 'diagnostic_appointment':
+      const testName = params.testName || 'تشخیصی و لیب ٹیسٹ';
+      const dept = params.departmentName || 'لیب / ریڈیالوجی';
+      const fee = params.testFee ? `Rs. ${params.testFee.toLocaleString()}` : 'حسبِ ٹیسٹ مینو';
+      const instr = params.testInstructions ? `⚠️ ضروری ہدایات: ${params.testInstructions}\n` : '';
+      return {
+        urdu: `محترم ${recipientName} صاحب!
+حافظ کلینک کی تشخیصی و لیب سروس میں آپ کا ٹیسٹ کامیابی سے بک ہو چکا ہے۔
+
+🔬 ٹیسٹ کا نام: ${testName}
+🏢 شعبہ: ${dept}
+🎫 لیب ٹوکن نمبر: #${tokenNumber}
+📅 تاریخ: ${date}
+⏰ وقت: ${timeSlot}
+💵 تخمینی فیس: ${fee}
+${instr}🏥 پتہ: حافظ کلینک بائیو اسکین و پیتھالوجی لیب، وزیرآباد روڈ، گوجرانوالہ
+📞 ہیلپ لائن: 0300-6428789
+
+برائے مہربانی اپنے مقررہ وقت پر کاؤنٹر پر ٹوکن دکھائیں۔ شکریہ!`,
+        english: `Dear ${recipientName},
+Your diagnostic / lab test at Hafiz Clinic is confirmed.
+
+Test: ${testName}
+Department: ${dept}
+Lab Token: #${tokenNumber}
+Date: ${date}
+Slot: ${timeSlot}
+Estimated Fee: ${fee}
+${params.testInstructions ? `Note: ${params.testInstructions}\n` : ''}Location: Hafiz Clinic BioScan & Pathology Lab, Gujranwala
+Helpline: 0300-6428789`,
       };
 
     case 'slip_receipt':

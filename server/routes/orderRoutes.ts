@@ -155,4 +155,29 @@ router.put('/:id', async (req: Request, res: Response) => {
   }
 });
 
+// DELETE /api/orders/:id
+router.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (getMongoConnectedStatus()) {
+      const isObjId = mongoose.Types.ObjectId.isValid(id);
+      const query = isObjId ? { $or: [{ _id: id }, { trackingId: id }] } : { trackingId: id };
+      const currentOrder = await Order.findOne(query);
+
+      // Restore stock if not already cancelled
+      if (currentOrder && currentOrder.status !== 'Cancelled') {
+        await adjustProductStock(currentOrder.items, true);
+      }
+
+      await Order.findOneAndDelete(query);
+    }
+
+    inMemoryOrders = inMemoryOrders.filter((o) => o._id !== id && o.id !== id && o.trackingId !== id);
+    return res.json({ success: true, message: 'Order deleted and inventory restored successfully.' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 export default router;

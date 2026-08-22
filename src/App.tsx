@@ -11,7 +11,7 @@ import {
   initialArticles,
 } from './data/initialData';
 import { Disease, Product, OrderItem, Doctor, Appointment, Order, ClinicSettings, HealthArticle } from './types';
-import { getAppointmentsApi, createAppointmentApi, updateAppointmentApi } from './services/api';
+import { getAppointmentsApi, createAppointmentApi, updateAppointmentApi, deleteProductApi, deleteDoctorApi, deleteDiseaseApi } from './services/api';
 import { createAutoInvoiceFromAppointment } from './services/billingService';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
@@ -38,6 +38,14 @@ import { ServicesView } from './components/ServicesView';
 import { LabReportsView } from './components/LabReportsView';
 import { LegalPagesView } from './components/LegalPagesView';
 import { SeoToolsView } from './components/SeoToolsView';
+import { SmartPharmacyPosView } from './components/SmartPharmacyPosView';
+import { PathologyLabView } from './components/PathologyLabView';
+import { ShiftAccountsView } from './components/ShiftAccountsView';
+import { OpdQueueScreenView } from './components/OpdQueueScreenView';
+import { IpdWardManagementView } from './components/IpdWardManagementView';
+import { StaffPortalGateway } from './components/StaffPortalGateway';
+import { NursingCarePortalView } from './components/NursingCarePortalView';
+import { StaffUser } from './types';
 
 export default function App() {
   const [activeView, setActiveView] = useState<string>('home');
@@ -242,6 +250,7 @@ export default function App() {
           setLanguage={setLanguage}
           currentUser={currentUser}
           onLogout={() => setCurrentUser(null)}
+          onLogin={(user) => setCurrentUser(user)}
         />
       )}
 
@@ -411,6 +420,99 @@ export default function App() {
           />
         )}
 
+        {/* Master Role-Based Staff Portals Gateway */}
+        {activeView === 'staff-portals' && (
+          <StaffPortalGateway
+            currentUser={currentUser}
+            language={language}
+            onSelectPortal={(portalKey, userToLogin) => {
+              if (userToLogin) {
+                setCurrentUser(userToLogin);
+              }
+              setActiveView(portalKey);
+            }}
+            onLogout={() => setCurrentUser(null)}
+          />
+        )}
+
+        {/* Nursing Care Station & 4-Hourly Sheet View */}
+        {activeView === 'nursing-station' && (
+          <NursingCarePortalView
+            currentUser={currentUser}
+            language={language}
+            onLogin={(user) => setCurrentUser(user)}
+            onLogout={() => setCurrentUser(null)}
+          />
+        )}
+
+        {/* Dedicated ERP Suite Views */}
+        {activeView === 'opd-queue' && (
+          <OpdQueueScreenView
+            doctors={doctors}
+            language={language}
+            clinicSettings={settings}
+            onBackToApp={() => setActiveView('home')}
+          />
+        )}
+
+        {activeView === 'ipd-ward' && (
+          <div className="py-12 bg-slate-50 min-h-screen">
+            <div className="max-w-7xl mx-auto px-4">
+              <IpdWardManagementView
+                doctors={doctors}
+                language={language}
+                clinicSettings={settings}
+                currentUser={currentUser}
+                onLogin={(user) => setCurrentUser(user)}
+                onLogout={() => setCurrentUser(null)}
+              />
+            </div>
+          </div>
+        )}
+
+        {activeView === 'pharmacy-pos' && (
+          <div className="py-12 bg-slate-50 min-h-screen">
+            <div className="max-w-7xl mx-auto px-4">
+              <SmartPharmacyPosView
+                products={products}
+                language={language}
+                clinicSettings={settings}
+                currentUser={currentUser}
+                onLogin={(user) => setCurrentUser(user)}
+                onLogout={() => setCurrentUser(null)}
+              />
+            </div>
+          </div>
+        )}
+
+        {activeView === 'pathology-lab' && (
+          <div className="py-12 bg-slate-50 min-h-screen">
+            <div className="max-w-7xl mx-auto px-4">
+              <PathologyLabView
+                language={language}
+                clinicSettings={settings}
+                currentUser={currentUser}
+                onLogin={(user) => setCurrentUser(user)}
+                onLogout={() => setCurrentUser(null)}
+              />
+            </div>
+          </div>
+        )}
+
+        {activeView === 'shift-accounts' && (
+          <div className="py-12 bg-slate-50 min-h-screen">
+            <div className="max-w-7xl mx-auto px-4">
+              <ShiftAccountsView
+                doctors={doctors}
+                slips={[]}
+                expenses={[]}
+                language={language}
+                clinicSettings={settings}
+              />
+            </div>
+          </div>
+        )}
+
         {activeView === 'admin' && (
           <AdminPanel
             doctors={doctors}
@@ -424,12 +526,24 @@ export default function App() {
             articles={articles}
             onUpdateSettings={setSettings}
             onAddProduct={(p) => setProducts([p, ...products])}
-            onDeleteProduct={(id) => setProducts(products.filter((p) => p.id !== id))}
+            onDeleteProduct={(id) => {
+              const target = products.find((p) => p.id === id || (p as any)._id === id);
+              deleteProductApi(id, target?.image, target?.videoUrl).catch(() => {});
+              setProducts(products.filter((p) => p.id !== id && (p as any)._id !== id));
+            }}
             onAddDoctor={(d) => setDoctors([d, ...doctors])}
             onUpdateDoctor={handleUpdateDoctor}
-            onDeleteDoctor={(id) => setDoctors(doctors.filter((d) => d.id !== id))}
+            onDeleteDoctor={(id) => {
+              const target = doctors.find((d) => d.id === id || (d as any)._id === id);
+              deleteDoctorApi(id, target?.image).catch(() => {});
+              setDoctors(doctors.filter((d) => d.id !== id && (d as any)._id !== id));
+            }}
             onAddDisease={(dis) => setDiseases([dis, ...diseases])}
-            onDeleteDisease={(id) => setDiseases(diseases.filter((dis) => dis.id !== id))}
+            onDeleteDisease={(id) => {
+              const target = diseases.find((dis) => dis.id === id || (dis as any)._id === id);
+              deleteDiseaseApi(id, target?.image || target?.imageUrl).catch(() => {});
+              setDiseases(diseases.filter((dis) => dis.id !== id && (dis as any)._id !== id));
+            }}
             onAddArticle={handleAddArticle}
             onDeleteArticle={handleDeleteArticle}
             onUpdateAppointmentStatus={handleUpdateAppointmentStatus}
@@ -460,8 +574,8 @@ export default function App() {
         onAddAppointment={handleAddAppointment}
       />
 
-      {/* Footer (Hidden when inside dedicated Doctor Portal or Admin Portal) */}
-      {activeView !== 'doctor-portal' && activeView !== 'admin' && (
+      {/* Footer (Hidden when inside dedicated Doctor Portal, Admin Portal, or Live OPD Queue) */}
+      {activeView !== 'doctor-portal' && activeView !== 'admin' && activeView !== 'opd-queue' && (
         <Footer
           settings={settings}
           setActiveView={setActiveView}

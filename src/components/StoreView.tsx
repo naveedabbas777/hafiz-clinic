@@ -21,6 +21,9 @@ import {
   ArrowRightLeft,
   Tag,
   Percent,
+  Video,
+  Play,
+  Film,
 } from 'lucide-react';
 import { loginApi, registerPatientApi } from '../services/api';
 
@@ -55,6 +58,7 @@ export const StoreView: React.FC<StoreViewProps> = ({
   const [compareList, setCompareList] = useState<Product[]>([]);
   const [isCompareOpen, setIsCompareOpen] = useState<boolean>(false);
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
+  const [quickViewMediaTab, setQuickViewMediaTab] = useState<'photo' | 'video'>('photo');
   const [couponCode, setCouponCode] = useState<string>('');
   const [appliedDiscount, setAppliedDiscount] = useState<number>(0);
   const [couponMsg, setCouponMsg] = useState<string>('');
@@ -120,8 +124,9 @@ export const StoreView: React.FC<StoreViewProps> = ({
     }
   };
 
-  const handleOpenQuickView = (product: Product) => {
+  const handleOpenQuickView = (product: Product, initialTab: 'photo' | 'video' = 'photo') => {
     setQuickViewProduct(product);
+    setQuickViewMediaTab(product.videoUrl && initialTab === 'video' ? 'video' : 'photo');
     // Track in recently viewed
     if (!recentlyViewed.some((p) => p.id === product.id)) {
       setRecentlyViewed([product, ...recentlyViewed.slice(0, 4)]);
@@ -289,6 +294,21 @@ export const StoreView: React.FC<StoreViewProps> = ({
                       {isUrdu ? prod.categoryUrdu : prod.category.toUpperCase()}
                     </span>
 
+                    {prod.videoUrl && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenQuickView(prod, 'video');
+                        }}
+                        className="absolute bottom-2 left-2 bg-slate-950/85 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-1 rounded-lg backdrop-blur-sm flex items-center gap-1 shadow transition-colors z-10"
+                        title={isUrdu ? 'پروڈکٹ ویڈیو دیکھیں' : 'Watch Product Video'}
+                      >
+                        <Play className="w-3 h-3 fill-current text-amber-400" />
+                        <span>{isUrdu ? 'ویڈیو دیکھیں' : 'Watch Video'}</span>
+                      </button>
+                    )}
+
                     {/* Interactive Overlay Buttons: Wishlist, Compare, Quick View */}
                     <div className="absolute top-2 left-2 flex flex-col gap-1.5 opacity-90">
                       <button
@@ -423,11 +443,65 @@ export const StoreView: React.FC<StoreViewProps> = ({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <img
-                  src={quickViewProduct.image}
-                  alt={quickViewProduct.nameUrdu}
-                  className="w-full h-56 object-cover rounded-2xl shadow border"
-                />
+                <div>
+                  {quickViewProduct.videoUrl && (
+                    <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl w-fit mb-3 border border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setQuickViewMediaTab('photo')}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                          quickViewMediaTab === 'photo'
+                            ? 'bg-white shadow-sm text-emerald-800 border border-slate-200'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        {isUrdu ? '📷 تصویر (Photo)' : '📷 Photo'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setQuickViewMediaTab('video')}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                          quickViewMediaTab === 'video'
+                            ? 'bg-emerald-700 shadow-sm text-white'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <Play className="w-3 h-3 fill-current text-amber-400" />
+                        <span>{isUrdu ? '🎥 ویڈیو ڈیمو (Video)' : '🎥 Video Demo'}</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {quickViewProduct.videoUrl && quickViewMediaTab === 'video' ? (
+                    <div className="w-full h-56 rounded-2xl overflow-hidden shadow border border-slate-800 bg-black flex items-center justify-center">
+                      {quickViewProduct.videoUrl.includes('youtube.com') || quickViewProduct.videoUrl.includes('youtu.be') ? (
+                        <iframe
+                          src={quickViewProduct.videoUrl.replace('watch?v=', 'embed/').replace('youtu.be/', 'www.youtube.com/embed/')}
+                          title="Product Video"
+                          className="w-full h-full border-0"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        />
+                      ) : (
+                        <video
+                          src={quickViewProduct.videoUrl}
+                          controls
+                          autoPlay
+                          className="w-full h-full object-contain"
+                        >
+                          Your browser does not support the video player.
+                        </video>
+                      )}
+                    </div>
+                  ) : (
+                    <img
+                      src={quickViewProduct.image}
+                      alt={quickViewProduct.nameUrdu}
+                      className="w-full h-56 object-cover rounded-2xl shadow border"
+                    />
+                  )}
+                </div>
+
                 <div className="space-y-3 text-xs">
                   <h3 className="text-lg font-black text-slate-900">
                     {isUrdu ? quickViewProduct.nameUrdu : quickViewProduct.nameEnglish}
