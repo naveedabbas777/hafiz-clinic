@@ -1,17 +1,29 @@
 import React, { useState } from 'react';
-import { Product } from '../types';
-import { Sparkles, ShoppingBag, CheckCircle, MessageCircle, Heart, Shield, Droplets } from 'lucide-react';
+import { Product, ClinicSettings } from '../types';
+import { Sparkles, ShoppingBag, CheckCircle, MessageCircle, Heart, Shield, Droplets, Play, Volume2, VolumeX, Film, CheckCircle2 } from 'lucide-react';
 
 interface BeautyCreamViewProps {
   product: Product;
+  settings?: ClinicSettings;
   onAddToCart: (product: Product, quantity: number) => void;
   language?: 'urdu' | 'english';
 }
 
-export const BeautyCreamView: React.FC<BeautyCreamViewProps> = ({ product, onAddToCart, language = 'english' }) => {
+export const BeautyCreamView: React.FC<BeautyCreamViewProps> = ({ product, settings, onAddToCart, language = 'english' }) => {
   const [quantity, setQuantity] = useState(1);
   const [orderSuccess, setOrderSuccess] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const isUrdu = language === 'urdu';
+
+  const videoUrl = settings?.beautyCreamVideoUrl || product?.videoUrl || 'https://assets.mixkit.co/videos/preview/mixkit-set-of-plateaus-seen-from-the-sky-in-a-sunset-26070-large.mp4';
+  const videoTitle = isUrdu
+    ? (settings?.beautyCreamVideoTitleUrdu || 'ہوراب بیوٹی کریم کی نیچرل گلو اور استعمال کی ویڈیو')
+    : (settings?.beautyCreamVideoTitleEnglish || 'Hoorab Radiance Beauty Cream Vitamin & Glow Video');
+
+  const isYouTube = videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be');
+  const embedYoutubeUrl = isYouTube 
+    ? videoUrl.replace('watch?v=', 'embed/').replace('youtu.be/', 'www.youtube.com/embed/') + '?autoplay=1&mute=1&loop=1'
+    : '';
 
   const facialsListUrdu = [
     'ہربل فیشل', 'میڈیکیٹڈ فیشل', 'کاسمیٹک فیشل', 'فروٹ فیشل',
@@ -90,6 +102,89 @@ export const BeautyCreamView: React.FC<BeautyCreamViewProps> = ({ product, onAdd
               <img src={product.image} alt="Hoorab Beauty Cream" className="w-full h-80 sm:h-96 object-cover" />
               <div className="absolute top-3 right-3 bg-amber-400 text-slate-950 text-xs font-black px-3 py-1 rounded-full">
                 Vitamin A, B, C Care
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Prominent Beauty Cream Video Showcase */}
+        <div className="bg-gradient-to-br from-slate-900 via-teal-950 to-slate-950 text-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-800">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+            <div className="lg:col-span-7">
+              <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black shadow-2xl border border-slate-700">
+                {isYouTube ? (
+                  <iframe
+                    src={embedYoutubeUrl}
+                    title="Beauty Cream Video"
+                    className="w-full h-full border-0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                ) : (
+                  <>
+                    <video
+                      src={videoUrl}
+                      autoPlay
+                      loop
+                      muted={isMuted}
+                      playsInline
+                      controls
+                      className="w-full h-full object-cover"
+                    >
+                      Your browser does not support HTML5 video.
+                    </video>
+                    <div className="absolute top-3 right-3 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsMuted(!isMuted)}
+                        className="bg-black/60 hover:bg-black/80 backdrop-blur-md text-white p-2 rounded-xl text-xs font-bold transition-transform hover:scale-105 flex items-center gap-1.5 shadow-lg border border-white/20"
+                      >
+                        {isMuted ? <VolumeX className="w-4 h-4 text-amber-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+                        <span className="text-[11px]">{isMuted ? (isUrdu ? 'آواز کھولیں' : 'Unmute') : (isUrdu ? 'آواز بند' : 'Mute')}</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+                <div className="absolute bottom-2 left-2 pointer-events-none">
+                  <span className="bg-teal-600/90 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg backdrop-blur-sm flex items-center gap-1">
+                    <Film className="w-3 h-3" />
+                    <span>{isUrdu ? 'بیوٹی کریم ویڈیو ٹور' : 'Beauty Cream Video'}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="lg:col-span-5 space-y-4">
+              <div className="inline-flex items-center gap-1.5 bg-teal-500/20 text-teal-300 border border-teal-500/30 px-3 py-1 rounded-full text-xs font-bold">
+                <Sparkles className="w-3.5 h-3.5 fill-current" />
+                <span>{isUrdu ? 'اسکن گلو اور نیچرل ہائیڈریشن' : 'Skin Glow & Hydration Video'}</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-white leading-snug">
+                {videoTitle}
+              </h3>
+              <p className="text-slate-300 text-xs sm:text-sm leading-relaxed">
+                {isUrdu
+                  ? 'دیکھیں کس طرح وٹامنز اور قدرتی اجزاء سے تیار کردہ ہوراب بیوٹی کریم آپ کی جلد کو چمکدار اور صحت مند رکھنے میں مدد دیتی ہے۔'
+                  : 'Explore how natural vitamin complexes replenish essential moisture and support a clean, glowing complexion without harmful bleaches.'}
+              </p>
+
+              <div className="grid grid-cols-2 gap-2.5 pt-2 text-xs font-semibold text-slate-200">
+                <div className="bg-white/10 p-2.5 rounded-xl border border-white/10 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-teal-400 shrink-0" />
+                  <span>{isUrdu ? 'وٹامن A، B، C نکھار' : 'Multi-Vitamin'}</span>
+                </div>
+                <div className="bg-white/10 p-2.5 rounded-xl border border-white/10 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{isUrdu ? 'داغ دھبے ہلکے' : 'Spot Reduction'}</span>
+                </div>
+                <div className="bg-white/10 p-2.5 rounded-xl border border-white/10 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>{isUrdu ? 'نان اسٹکی ٹیکسچر' : 'Non-Greasy'}</span>
+                </div>
+                <div className="bg-white/10 p-2.5 rounded-xl border border-white/10 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-teal-400 shrink-0" />
+                  <span>{isUrdu ? 'ہر موسم کے لیے' : 'All Seasons'}</span>
+                </div>
               </div>
             </div>
           </div>

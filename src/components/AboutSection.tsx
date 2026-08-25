@@ -1,18 +1,31 @@
-import React from 'react';
-import { ShieldCheck, Cpu, FlaskConical, Users, Award, Clock, HeartHandshake, CheckCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { ShieldCheck, Cpu, FlaskConical, Users, Award, Clock, HeartHandshake, CheckCircle, Play, Volume2, VolumeX, Maximize2, Film } from 'lucide-react';
+import { ClinicSettings } from '../types';
 
 interface AboutSectionProps {
+  settings?: ClinicSettings;
   language?: 'urdu' | 'english';
 }
 
-export const AboutSection: React.FC<AboutSectionProps> = ({ language = 'english' }) => {
+export const AboutSection: React.FC<AboutSectionProps> = ({ settings, language = 'english' }) => {
   const isUrdu = language === 'urdu';
+  const [isMuted, setIsMuted] = useState(true);
+
+  const videoUrl = settings?.clinicVideoUrl || 'https://assets.mixkit.co/videos/preview/mixkit-set-of-plateaus-seen-from-the-sky-in-a-sunset-26070-large.mp4';
+  const videoTitle = isUrdu 
+    ? (settings?.clinicVideoTitleUrdu || 'حافظ کلینک کا تعارف اور جدید سہولیات کی ویڈیو') 
+    : (settings?.clinicVideoTitleEnglish || 'Hafiz Clinic & Diagnostic Center Video Tour');
+
+  const isYouTube = videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be');
+  const embedYoutubeUrl = isYouTube 
+    ? videoUrl.replace('watch?v=', 'embed/').replace('youtu.be/', 'www.youtube.com/embed/') + '?autoplay=1&mute=1&loop=1'
+    : '';
 
   return (
     <section className="py-16 bg-gradient-to-b from-white to-slate-50 text-slate-800">
       <div className="max-w-7xl mx-auto px-4">
         {/* Header Title */}
-        <div className="text-center max-w-3xl mx-auto mb-12 space-y-3">
+        <div className="text-center max-w-3xl mx-auto mb-10 space-y-3">
           <div className="inline-flex items-center gap-2 bg-emerald-100 text-emerald-900 px-3.5 py-1 rounded-full text-xs font-black">
             <ShieldCheck className="w-4 h-4 text-emerald-700" />
             <span>{isUrdu ? 'پنجاب ہیلتھ کیئر سے باقاعدہ منظور شدہ' : 'PHC Officially Approved Clinic'}</span>
@@ -25,6 +38,92 @@ export const AboutSection: React.FC<AboutSectionProps> = ({ language = 'english'
               ? 'پچھلے 15+ سالوں سے مریضوں کی بے لوث خدمت، جدید کمپیوٹرائزڈ چیک اپ، لیبارٹری ٹیسٹس، اور فزیوتھراپی کے ذریعے شفابخش علاج۔'
               : 'Serving patients for 15+ years with dedication, offering computerized health diagnosis, certified lab diagnostics, physical therapy, and herbal treatments.'}
           </p>
+        </div>
+
+        {/* Prominent Clinic Video Showcase */}
+        <div className="mb-14 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 text-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-800 relative overflow-hidden">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+            {/* Video Player */}
+            <div className="lg:col-span-7">
+              <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black shadow-2xl border border-slate-700 group">
+                {isYouTube ? (
+                  <iframe
+                    src={embedYoutubeUrl}
+                    title="Clinic Video Tour"
+                    className="w-full h-full border-0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                ) : (
+                  <>
+                    <video
+                      src={videoUrl}
+                      autoPlay
+                      loop
+                      muted={isMuted}
+                      playsInline
+                      controls
+                      className="w-full h-full object-cover"
+                    >
+                      Your browser does not support HTML5 video.
+                    </video>
+                    <div className="absolute top-3 right-3 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsMuted(!isMuted)}
+                        className="bg-black/60 hover:bg-black/80 backdrop-blur-md text-white p-2 rounded-xl text-xs font-bold transition-transform hover:scale-105 flex items-center gap-1.5 shadow-lg border border-white/20"
+                        title={isMuted ? 'Unmute Video' : 'Mute Video'}
+                      >
+                        {isMuted ? <VolumeX className="w-4 h-4 text-amber-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+                        <span className="text-[11px]">{isMuted ? (isUrdu ? 'آواز کھولیں' : 'Unmute') : (isUrdu ? 'آواز بند' : 'Mute')}</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+                <div className="absolute bottom-2 left-2 pointer-events-none">
+                  <span className="bg-emerald-600/90 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg backdrop-blur-sm flex items-center gap-1">
+                    <Film className="w-3 h-3" />
+                    <span>{isUrdu ? 'لائیو کلینک ویڈیو' : 'Live Clinic Video'}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Video Details & Highlights */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="inline-flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-3 py-1 rounded-full text-xs font-bold">
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>{isUrdu ? 'ویڈیو ٹور اور سہولیات' : 'Featured Video Presentation'}</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-white leading-snug">
+                {videoTitle}
+              </h3>
+              <p className="text-slate-300 text-xs sm:text-sm leading-relaxed">
+                {isUrdu
+                  ? 'ہمارے جدید کلینک کا معائنہ کریں جہاں مریضوں کو صاف ستھرا پرسکون ماحول، جدید ڈائیگنوسٹک مشینیں، مستند ڈاکٹرز اور 100% خالص قدرتی ادویات فراہم کی جاتی ہیں۔'
+                  : 'Watch an authentic tour of Hafiz Clinic featuring our advanced computerized scanning equipment, private male/female consultation suites, accredited clinical testing, and pharmacy.'}
+              </p>
+
+              <div className="grid grid-cols-2 gap-2.5 pt-2 text-xs font-semibold text-slate-200">
+                <div className="bg-white/10 p-2.5 rounded-xl border border-white/10 flex items-center gap-2">
+                  <Cpu className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{isUrdu ? 'کمپیوٹرائزڈ معائنہ' : 'Computer Scan'}</span>
+                </div>
+                <div className="bg-white/10 p-2.5 rounded-xl border border-white/10 flex items-center gap-2">
+                  <FlaskConical className="w-4 h-4 text-teal-400 shrink-0" />
+                  <span>{isUrdu ? 'مکمل لیب ٹیسٹس' : 'Certified Labs'}</span>
+                </div>
+                <div className="bg-white/10 p-2.5 rounded-xl border border-white/10 flex items-center gap-2">
+                  <Users className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>{isUrdu ? 'پردہ دار خواتین ہال' : 'Private Suites'}</span>
+                </div>
+                <div className="bg-white/10 p-2.5 rounded-xl border border-white/10 flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{isUrdu ? '15+ سال کا تجربہ' : '15+ Years Trust'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Features Grid */}

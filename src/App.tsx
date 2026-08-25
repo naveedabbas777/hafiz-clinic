@@ -263,7 +263,7 @@ export default function App() {
               onOpenAppointment={() => handleOpenAppointment()}
               onSelectCategory={(cat) => setActiveView('diseases')}
             />
-            <AboutSection language={language} />
+            <AboutSection settings={settings} language={language} />
             <DoctorsSection doctors={doctors} onOpenAppointment={handleOpenAppointment} language={language} />
             <ComputerCheckupSection onOpenAppointment={() => handleOpenAppointment(isUrdu ? 'کمپیوٹر چیک اپ' : 'Computer Checkup')} language={language} />
             <DiseasesGrid
@@ -283,7 +283,7 @@ export default function App() {
 
         {activeView === 'clinic' && (
           <>
-            <AboutSection language={language} />
+            <AboutSection settings={settings} language={language} />
             <ComputerCheckupSection onOpenAppointment={() => handleOpenAppointment(isUrdu ? 'کمپیوٹر چیک اپ' : 'Computer Checkup')} language={language} />
             <DoctorsSection doctors={doctors} onOpenAppointment={handleOpenAppointment} language={language} />
           </>
@@ -317,6 +317,7 @@ export default function App() {
         {activeView === 'eyecare' && (
           <EyeCareView
             eyeProducts={eyeProducts}
+            settings={settings}
             onAddToCart={handleAddToCart}
             onOpenAppointment={handleOpenAppointment}
             language={language}
@@ -324,11 +325,11 @@ export default function App() {
         )}
 
         {activeView === 'hairoil' && (
-          <HairOilView product={hairOilProduct} onAddToCart={handleAddToCart} language={language} />
+          <HairOilView product={hairOilProduct} settings={settings} onAddToCart={handleAddToCart} language={language} />
         )}
 
         {activeView === 'beautycream' && (
-          <BeautyCreamView product={beautyCreamProduct} onAddToCart={handleAddToCart} language={language} />
+          <BeautyCreamView product={beautyCreamProduct} settings={settings} onAddToCart={handleAddToCart} language={language} />
         )}
 
         {activeView === 'perfumes' && (

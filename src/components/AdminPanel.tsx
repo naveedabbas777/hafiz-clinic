@@ -992,6 +992,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [prodVideoUploadSuccess, setProdVideoUploadSuccess] = useState<boolean>(false);
   const [previewVideoModalUrl, setPreviewVideoModalUrl] = useState<string | null>(null);
 
+  // Section Videos Upload State
+  const [uploadingSectionVideo, setUploadingSectionVideo] = useState<string | null>(null);
+  const [sectionVideoUploadSuccess, setSectionVideoUploadSuccess] = useState<string | null>(null);
+
+  const handleSectionVideoFileUpload = async (sectionKey: 'clinic' | 'eyeCare' | 'hairOil' | 'beautyCream' | 'painRelief', file: File) => {
+    if (!file) return;
+    setUploadingSectionVideo(sectionKey);
+    try {
+      const res = await uploadProductVideoApi(file);
+      const videoUrl = (res.success && res.videoUrl) ? res.videoUrl : await fileToBase64(file);
+      const fieldMap: Record<string, keyof ClinicSettings> = {
+        clinic: 'clinicVideoUrl',
+        eyeCare: 'eyeCareVideoUrl',
+        hairOil: 'hairOilVideoUrl',
+        beautyCream: 'beautyCreamVideoUrl',
+        painRelief: 'painReliefVideoUrl',
+      };
+      const field = fieldMap[sectionKey];
+      onUpdateSettings({ ...settings, [field]: videoUrl });
+      setSectionVideoUploadSuccess(sectionKey);
+      setTimeout(() => setSectionVideoUploadSuccess(null), 3500);
+    } catch (err) {
+      console.error('Error uploading section video:', err);
+    } finally {
+      setUploadingSectionVideo(null);
+    }
+  };
+
   const refreshAdminData = () => {
     getUsersApi().then((res) => {
       if (res.success && res.users) {
@@ -4753,90 +4781,595 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
         {/* Settings Tab */}
         {activeTab === 'settings' && (
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 text-xs font-semibold text-slate-900">
-            <h3 className="font-bold text-emerald-900 text-sm">
-              {isUrdu ? 'کلینک بنیادی معلومات (Settings)' : 'Clinic Information & System Configuration'}
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-slate-700 mb-1">
-                  {isUrdu ? 'کلینک کا نام (اردو)' : 'Clinic Name (Urdu)'}
-                </label>
-                <input
-                  type="text"
-                  value={settings.clinicNameUrdu}
-                  onChange={(e) => onUpdateSettings({ ...settings, clinicNameUrdu: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold"
-                />
+          <div className="space-y-6 text-xs font-semibold text-slate-900">
+            {/* Core Info Card */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-5">
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-slate-200 pb-3">
+                <div>
+                  <h3 className="font-black text-emerald-950 text-base flex items-center gap-2">
+                    <Sliders className="w-5 h-5 text-emerald-700" />
+                    <span>{isUrdu ? 'کلینک بنیادی معلومات و رابطہ سیٹنگز' : 'Clinic Profile, Contact & System Configuration'}</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 font-normal mt-0.5">
+                    {isUrdu ? 'کلینک کا نام، پتہ، فون، واٹس ایپ اور سرکاری رجسٹریشن نمبر تبدیل کریں' : 'Update clinic details, official PHC registration, phone numbers, WhatsApp, and location'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => alert(isUrdu ? 'تمام سیٹنگز کامیابی سے محفوظ ہو گئیں۔' : 'Clinic settings saved successfully!')}
+                  className="bg-emerald-700 hover:bg-emerald-600 text-white font-bold px-5 py-2.5 rounded-xl shadow transition-colors flex items-center gap-2 self-start sm:self-auto"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{isUrdu ? 'سیٹنگز محفوظ کریں' : 'Save Changes'}</span>
+                </button>
               </div>
 
-              <div>
-                <label className="block text-slate-700 mb-1">
-                  {isUrdu ? 'کلینک کا نام (انگلش)' : 'Clinic Name (English)'}
-                </label>
-                <input
-                  type="text"
-                  value={settings.clinicNameEnglish}
-                  onChange={(e) => onUpdateSettings({ ...settings, clinicNameEnglish: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold"
-                />
-              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-slate-700 mb-1 font-bold">
+                    {isUrdu ? 'کلینک کا نام (اردو) *' : 'Clinic Name (Urdu) *'}
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.clinicNameUrdu}
+                    onChange={(e) => onUpdateSettings({ ...settings, clinicNameUrdu: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-slate-700 mb-1">
-                  {isUrdu ? 'فون نمبر 1' : 'Primary Phone Number'}
-                </label>
-                <input
-                  type="text"
-                  value={settings.phone1}
-                  onChange={(e) => onUpdateSettings({ ...settings, phone1: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-mono"
-                />
-              </div>
+                <div>
+                  <label className="block text-slate-700 mb-1 font-bold">
+                    {isUrdu ? 'کلینک کا نام (انگلش) *' : 'Clinic Name (English) *'}
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.clinicNameEnglish}
+                    onChange={(e) => onUpdateSettings({ ...settings, clinicNameEnglish: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-slate-700 mb-1">
-                  {isUrdu ? 'واٹس ایپ نمبر' : 'WhatsApp Helpline Number'}
-                </label>
-                <input
-                  type="text"
-                  value={settings.whatsappNumber}
-                  onChange={(e) => onUpdateSettings({ ...settings, whatsappNumber: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-mono"
-                />
-              </div>
+                <div>
+                  <label className="block text-slate-700 mb-1 font-bold">
+                    {isUrdu ? 'ٹیگ لائن (Urdu Tagline)' : 'Clinic Tagline (Urdu)'}
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.taglineUrdu || ''}
+                    onChange={(e) => onUpdateSettings({ ...settings, taglineUrdu: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-slate-700 mb-1">
-                  {isUrdu ? 'پنجاب ہیلتھ کیئر کمیشن نمبر' : 'Punjab Healthcare Commission Reg #'}
-                </label>
-                <input
-                  type="text"
-                  value={settings.phcApprovalNo}
-                  onChange={(e) => onUpdateSettings({ ...settings, phcApprovalNo: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-semibold"
-                />
-              </div>
+                <div>
+                  <label className="block text-slate-700 mb-1 font-bold">
+                    {isUrdu ? 'فون نمبر 1 (Primary Phone)' : 'Primary Phone Number'}
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.phone1}
+                    onChange={(e) => onUpdateSettings({ ...settings, phone1: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-mono font-bold"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-slate-700 mb-1">
-                  {isUrdu ? 'پتہ (انگلش)' : 'Clinic Address (English)'}
-                </label>
-                <input
-                  type="text"
-                  value={settings.addressEnglish}
-                  onChange={(e) => onUpdateSettings({ ...settings, addressEnglish: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-semibold"
-                />
+                <div>
+                  <label className="block text-slate-700 mb-1 font-bold">
+                    {isUrdu ? 'فون نمبر 2 (Secondary Phone)' : 'Secondary Phone Number'}
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.phone2 || ''}
+                    onChange={(e) => onUpdateSettings({ ...settings, phone2: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-mono font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 mb-1 font-bold">
+                    {isUrdu ? 'واٹس ایپ ہیلپ لائن (WhatsApp Number) *' : 'WhatsApp Helpline Number *'}
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={settings.whatsappNumber}
+                      onChange={(e) => onUpdateSettings({ ...settings, whatsappNumber: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-mono font-bold"
+                    />
+                    <a
+                      href={`https://wa.me/${settings.whatsappNumber.replace(/[^0-9]/g, '')}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-xl flex items-center justify-center shrink-0"
+                      title="Test WhatsApp Link"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                    </a>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 mb-1 font-bold">
+                    {isUrdu ? 'پنجاب ہیلتھ کیئر کمیشن رجسٹریشن نمبر' : 'Punjab Healthcare Commission Reg #'}
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.phcApprovalNo}
+                    onChange={(e) => onUpdateSettings({ ...settings, phcApprovalNo: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 mb-1 font-bold">
+                    {isUrdu ? 'کلینک کا پتہ (اردو)' : 'Clinic Address (Urdu)'}
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.addressUrdu || ''}
+                    onChange={(e) => onUpdateSettings({ ...settings, addressUrdu: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 mb-1 font-bold">
+                    {isUrdu ? 'کلینک کا پتہ (English)' : 'Clinic Address (English)'}
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.addressEnglish}
+                    onChange={(e) => onUpdateSettings({ ...settings, addressEnglish: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-semibold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 mb-1 font-bold">
+                    {isUrdu ? 'اوقات کار (Timings Urdu)' : 'Clinic Timings (Urdu)'}
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.timingsUrdu || ''}
+                    onChange={(e) => onUpdateSettings({ ...settings, timingsUrdu: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-bold"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-slate-700 mb-1 font-bold">
+                    {isUrdu ? 'گوگل میپس لوکیشن لنک (Google Maps URL)' : 'Google Maps Location Link'}
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.googleMapsUrl || ''}
+                    onChange={(e) => onUpdateSettings({ ...settings, googleMapsUrl: e.target.value })}
+                    placeholder="https://maps.google.com/..."
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-mono text-[11px]"
+                  />
+                </div>
               </div>
             </div>
 
-            <button
-              onClick={() => alert(isUrdu ? 'سیٹنگز محفوظ کر لی گئی ہیں۔' : 'Clinic Settings updated successfully!')}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-2.5 rounded-xl shadow mt-2 transition-colors"
-            >
-              {isUrdu ? 'سیٹنگز محفوظ کریں (Save Settings)' : 'Save Clinic Settings'}
-            </button>
+            {/* Video Management Section for Clinic, Eye, Hair Oil, Cream, Pain Relief */}
+            <div className="bg-slate-900 text-white p-6 sm:p-8 rounded-3xl border border-slate-800 shadow-xl space-y-6">
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2 border-b border-slate-800 pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl border border-emerald-500/30">
+                      <Film className="w-5 h-5" />
+                    </span>
+                    <h3 className="text-lg font-black text-white">
+                      {isUrdu ? 'سیکشنز اور پراڈکٹس ویڈیو مینیجر (Video Showcase Manager)' : 'Section & Product Video Showcase Management'}
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {isUrdu
+                      ? 'کلینک ٹور، آئی کیئر سنٹر، ہوراب ہیئر آئل اور بیوٹی کریم کی لائیو ویڈیوز تبدیل کریں یا نئی ویڈیو فائل اپلوڈ کریں'
+                      : 'Upload or embed high-resolution videos for Clinic Overview, Eye Care, Hair Oil, and Beauty Cream sections.'}
+                  </p>
+                </div>
+                <div className="bg-emerald-950/80 border border-emerald-700/50 text-emerald-300 px-3 py-1.5 rounded-xl text-[11px] font-bold flex items-center gap-1.5 self-start sm:self-auto">
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  <span>{isUrdu ? '5 اہم سیکشنز لائیو ویڈیوز' : '5 Live Video Sections'}</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* 1. Clinic Overview Video */}
+                <div className="bg-slate-800/80 p-5 rounded-2xl border border-slate-700/80 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="bg-emerald-900/90 text-emerald-300 text-[11px] font-black px-2.5 py-1 rounded-lg">
+                      🏥 {isUrdu ? '1. کلینک تعارف و ٹور ویڈیو' : '1. Clinic Overview Video'}
+                    </span>
+                    {settings.clinicVideoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => onUpdateSettings({ ...settings, clinicVideoUrl: '' })}
+                        className="text-[10px] text-rose-400 hover:underline font-bold"
+                      >
+                        {isUrdu ? 'ویڈیو ختم کریں' : 'Remove Video'}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Video Preview Box */}
+                  <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-slate-700 flex items-center justify-center group shadow-md">
+                    {settings.clinicVideoUrl ? (
+                      settings.clinicVideoUrl.includes('youtube.com') || settings.clinicVideoUrl.includes('youtu.be') ? (
+                        <iframe
+                          src={settings.clinicVideoUrl.replace('watch?v=', 'embed/').replace('youtu.be/', 'www.youtube.com/embed/')}
+                          title="Clinic Video"
+                          className="w-full h-full border-0"
+                          allowFullScreen
+                        />
+                      ) : (
+                        <>
+                          <video src={settings.clinicVideoUrl} className="w-full h-full object-cover" muted />
+                          <button
+                            type="button"
+                            onClick={() => setPreviewVideoModalUrl(settings.clinicVideoUrl || null)}
+                            className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Play className="w-8 h-8 text-white drop-shadow" />
+                          </button>
+                        </>
+                      )
+                    ) : (
+                      <div className="text-center text-slate-500 text-xs flex flex-col items-center gap-1">
+                        <Film className="w-8 h-8 text-slate-600" />
+                        <span>{isUrdu ? 'کوئی ویڈیو لنک موجود نہیں' : 'No video uploaded'}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-slate-300 text-[11px] font-bold mb-1">
+                        {isUrdu ? 'ویڈیو ٹائٹل (اردو)' : 'Video Title (Urdu)'}
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.clinicVideoTitleUrdu || ''}
+                        onChange={(e) => onUpdateSettings({ ...settings, clinicVideoTitleUrdu: e.target.value })}
+                        className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-white text-xs font-bold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 text-[11px] font-bold mb-1">
+                        {isUrdu ? 'ویڈیو URL یا یوٹیوب لنک' : 'Video URL / YouTube Link'}
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.clinicVideoUrl || ''}
+                        onChange={(e) => onUpdateSettings({ ...settings, clinicVideoUrl: e.target.value })}
+                        placeholder="https://... or YouTube link"
+                        className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-white font-mono text-[10px]"
+                      />
+                    </div>
+
+                    <div className="pt-1">
+                      <input
+                        type="file"
+                        accept="video/*"
+                        id="clinic-vid-file"
+                        onChange={(e) => e.target.files?.[0] && handleSectionVideoFileUpload('clinic', e.target.files[0])}
+                        className="hidden"
+                      />
+                      <label
+                        htmlFor="clinic-vid-file"
+                        className="w-full bg-teal-800 hover:bg-teal-700 text-white font-bold py-2 px-3 rounded-xl cursor-pointer flex items-center justify-center gap-2 text-xs shadow transition-colors"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>
+                          {uploadingSectionVideo === 'clinic'
+                            ? (isUrdu ? 'ویڈیو اپلوڈ ہو رہی ہے...' : 'Uploading Video...')
+                            : (isUrdu ? 'ویڈیو فائل اپلوڈ کریں (MP4)' : 'Upload Clinic Video File (MP4)')}
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Eye Care & Vision Center Video */}
+                <div className="bg-slate-800/80 p-5 rounded-2xl border border-slate-700/80 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="bg-cyan-900/90 text-cyan-300 text-[11px] font-black px-2.5 py-1 rounded-lg">
+                      👁️ {isUrdu ? '2. آئی کیئر اینڈ نظر سنٹر ویڈیو' : '2. Eye Care & Vision Video'}
+                    </span>
+                    {settings.eyeCareVideoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => onUpdateSettings({ ...settings, eyeCareVideoUrl: '' })}
+                        className="text-[10px] text-rose-400 hover:underline font-bold"
+                      >
+                        {isUrdu ? 'ویڈیو ختم کریں' : 'Remove Video'}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Video Preview Box */}
+                  <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-slate-700 flex items-center justify-center group shadow-md">
+                    {settings.eyeCareVideoUrl ? (
+                      settings.eyeCareVideoUrl.includes('youtube.com') || settings.eyeCareVideoUrl.includes('youtu.be') ? (
+                        <iframe
+                          src={settings.eyeCareVideoUrl.replace('watch?v=', 'embed/').replace('youtu.be/', 'www.youtube.com/embed/')}
+                          title="Eye Care Video"
+                          className="w-full h-full border-0"
+                          allowFullScreen
+                        />
+                      ) : (
+                        <>
+                          <video src={settings.eyeCareVideoUrl} className="w-full h-full object-cover" muted />
+                          <button
+                            type="button"
+                            onClick={() => setPreviewVideoModalUrl(settings.eyeCareVideoUrl || null)}
+                            className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Play className="w-8 h-8 text-white drop-shadow" />
+                          </button>
+                        </>
+                      )
+                    ) : (
+                      <div className="text-center text-slate-500 text-xs flex flex-col items-center gap-1">
+                        <Film className="w-8 h-8 text-slate-600" />
+                        <span>{isUrdu ? 'کوئی ویڈیو لنک موجود نہیں' : 'No video uploaded'}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-slate-300 text-[11px] font-bold mb-1">
+                        {isUrdu ? 'ویڈیو ٹائٹل (اردو)' : 'Video Title (Urdu)'}
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.eyeCareVideoTitleUrdu || ''}
+                        onChange={(e) => onUpdateSettings({ ...settings, eyeCareVideoTitleUrdu: e.target.value })}
+                        className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-white text-xs font-bold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 text-[11px] font-bold mb-1">
+                        {isUrdu ? 'ویڈیو URL یا یوٹیوب لنک' : 'Video URL / YouTube Link'}
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.eyeCareVideoUrl || ''}
+                        onChange={(e) => onUpdateSettings({ ...settings, eyeCareVideoUrl: e.target.value })}
+                        placeholder="https://... or YouTube link"
+                        className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-white font-mono text-[10px]"
+                      />
+                    </div>
+
+                    <div className="pt-1">
+                      <input
+                        type="file"
+                        accept="video/*"
+                        id="eyecare-vid-file"
+                        onChange={(e) => e.target.files?.[0] && handleSectionVideoFileUpload('eyeCare', e.target.files[0])}
+                        className="hidden"
+                      />
+                      <label
+                        htmlFor="eyecare-vid-file"
+                        className="w-full bg-cyan-800 hover:bg-cyan-700 text-white font-bold py-2 px-3 rounded-xl cursor-pointer flex items-center justify-center gap-2 text-xs shadow transition-colors"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>
+                          {uploadingSectionVideo === 'eyeCare'
+                            ? (isUrdu ? 'ویڈیو اپلوڈ ہو رہی ہے...' : 'Uploading Video...')
+                            : (isUrdu ? 'آئی کیئر ویڈیو فائل اپلوڈ کریں' : 'Upload Eye Care Video (MP4)')}
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Hoorab Herbal Hair Oil Video */}
+                <div className="bg-slate-800/80 p-5 rounded-2xl border border-slate-700/80 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="bg-amber-900/90 text-amber-300 text-[11px] font-black px-2.5 py-1 rounded-lg">
+                      💇‍♂️ {isUrdu ? '3. ہوراب ہربل ہیئر آئل ویڈیو' : '3. Hoorab Hair Oil Video'}
+                    </span>
+                    {settings.hairOilVideoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => onUpdateSettings({ ...settings, hairOilVideoUrl: '' })}
+                        className="text-[10px] text-rose-400 hover:underline font-bold"
+                      >
+                        {isUrdu ? 'ویڈیو ختم کریں' : 'Remove Video'}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Video Preview Box */}
+                  <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-slate-700 flex items-center justify-center group shadow-md">
+                    {settings.hairOilVideoUrl ? (
+                      settings.hairOilVideoUrl.includes('youtube.com') || settings.hairOilVideoUrl.includes('youtu.be') ? (
+                        <iframe
+                          src={settings.hairOilVideoUrl.replace('watch?v=', 'embed/').replace('youtu.be/', 'www.youtube.com/embed/')}
+                          title="Hair Oil Video"
+                          className="w-full h-full border-0"
+                          allowFullScreen
+                        />
+                      ) : (
+                        <>
+                          <video src={settings.hairOilVideoUrl} className="w-full h-full object-cover" muted />
+                          <button
+                            type="button"
+                            onClick={() => setPreviewVideoModalUrl(settings.hairOilVideoUrl || null)}
+                            className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Play className="w-8 h-8 text-white drop-shadow" />
+                          </button>
+                        </>
+                      )
+                    ) : (
+                      <div className="text-center text-slate-500 text-xs flex flex-col items-center gap-1">
+                        <Film className="w-8 h-8 text-slate-600" />
+                        <span>{isUrdu ? 'کوئی ویڈیو لنک موجود نہیں' : 'No video uploaded'}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-slate-300 text-[11px] font-bold mb-1">
+                        {isUrdu ? 'ویڈیو ٹائٹل (اردو)' : 'Video Title (Urdu)'}
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.hairOilVideoTitleUrdu || ''}
+                        onChange={(e) => onUpdateSettings({ ...settings, hairOilVideoTitleUrdu: e.target.value })}
+                        className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-white text-xs font-bold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 text-[11px] font-bold mb-1">
+                        {isUrdu ? 'ویڈیو URL یا یوٹیوب لنک' : 'Video URL / YouTube Link'}
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.hairOilVideoUrl || ''}
+                        onChange={(e) => onUpdateSettings({ ...settings, hairOilVideoUrl: e.target.value })}
+                        placeholder="https://... or YouTube link"
+                        className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-white font-mono text-[10px]"
+                      />
+                    </div>
+
+                    <div className="pt-1">
+                      <input
+                        type="file"
+                        accept="video/*"
+                        id="hairoil-vid-file"
+                        onChange={(e) => e.target.files?.[0] && handleSectionVideoFileUpload('hairOil', e.target.files[0])}
+                        className="hidden"
+                      />
+                      <label
+                        htmlFor="hairoil-vid-file"
+                        className="w-full bg-amber-800 hover:bg-amber-700 text-white font-bold py-2 px-3 rounded-xl cursor-pointer flex items-center justify-center gap-2 text-xs shadow transition-colors"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>
+                          {uploadingSectionVideo === 'hairOil'
+                            ? (isUrdu ? 'ویڈیو اپلوڈ ہو رہی ہے...' : 'Uploading Video...')
+                            : (isUrdu ? 'ہیئر آئل ویڈیو فائل اپلوڈ کریں' : 'Upload Hair Oil Video (MP4)')}
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Hoorab Beauty Cream Video */}
+                <div className="bg-slate-800/80 p-5 rounded-2xl border border-slate-700/80 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="bg-teal-900/90 text-teal-300 text-[11px] font-black px-2.5 py-1 rounded-lg">
+                      ✨ {isUrdu ? '4. ہوراب بیوٹی کریم ویڈیو' : '4. Hoorab Beauty Cream Video'}
+                    </span>
+                    {settings.beautyCreamVideoUrl && (
+                      <button
+                        type="button"
+                        onClick={() => onUpdateSettings({ ...settings, beautyCreamVideoUrl: '' })}
+                        className="text-[10px] text-rose-400 hover:underline font-bold"
+                      >
+                        {isUrdu ? 'ویڈیو ختم کریں' : 'Remove Video'}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Video Preview Box */}
+                  <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-black border border-slate-700 flex items-center justify-center group shadow-md">
+                    {settings.beautyCreamVideoUrl ? (
+                      settings.beautyCreamVideoUrl.includes('youtube.com') || settings.beautyCreamVideoUrl.includes('youtu.be') ? (
+                        <iframe
+                          src={settings.beautyCreamVideoUrl.replace('watch?v=', 'embed/').replace('youtu.be/', 'www.youtube.com/embed/')}
+                          title="Beauty Cream Video"
+                          className="w-full h-full border-0"
+                          allowFullScreen
+                        />
+                      ) : (
+                        <>
+                          <video src={settings.beautyCreamVideoUrl} className="w-full h-full object-cover" muted />
+                          <button
+                            type="button"
+                            onClick={() => setPreviewVideoModalUrl(settings.beautyCreamVideoUrl || null)}
+                            className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Play className="w-8 h-8 text-white drop-shadow" />
+                          </button>
+                        </>
+                      )
+                    ) : (
+                      <div className="text-center text-slate-500 text-xs flex flex-col items-center gap-1">
+                        <Film className="w-8 h-8 text-slate-600" />
+                        <span>{isUrdu ? 'کوئی ویڈیو لنک موجود نہیں' : 'No video uploaded'}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-slate-300 text-[11px] font-bold mb-1">
+                        {isUrdu ? 'ویڈیو ٹائٹل (اردو)' : 'Video Title (Urdu)'}
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.beautyCreamVideoTitleUrdu || ''}
+                        onChange={(e) => onUpdateSettings({ ...settings, beautyCreamVideoTitleUrdu: e.target.value })}
+                        className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-white text-xs font-bold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-300 text-[11px] font-bold mb-1">
+                        {isUrdu ? 'ویڈیو URL یا یوٹیوب لنک' : 'Video URL / YouTube Link'}
+                      </label>
+                      <input
+                        type="text"
+                        value={settings.beautyCreamVideoUrl || ''}
+                        onChange={(e) => onUpdateSettings({ ...settings, beautyCreamVideoUrl: e.target.value })}
+                        placeholder="https://... or YouTube link"
+                        className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-white font-mono text-[10px]"
+                      />
+                    </div>
+
+                    <div className="pt-1">
+                      <input
+                        type="file"
+                        accept="video/*"
+                        id="cream-vid-file"
+                        onChange={(e) => e.target.files?.[0] && handleSectionVideoFileUpload('beautyCream', e.target.files[0])}
+                        className="hidden"
+                      />
+                      <label
+                        htmlFor="cream-vid-file"
+                        className="w-full bg-teal-800 hover:bg-teal-700 text-white font-bold py-2 px-3 rounded-xl cursor-pointer flex items-center justify-center gap-2 text-xs shadow transition-colors"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>
+                          {uploadingSectionVideo === 'beautyCream'
+                            ? (isUrdu ? 'ویڈیو اپلوڈ ہو رہی ہے...' : 'Uploading Video...')
+                            : (isUrdu ? 'بیوٹی کریم ویڈیو فائل اپلوڈ کریں' : 'Upload Beauty Cream Video (MP4)')}
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-800 flex justify-end">
+                <button
+                  onClick={() => alert(isUrdu ? 'ویڈیو سیٹنگز کامیابی سے محفوظ ہو گئیں۔' : 'Video settings saved successfully!')}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-6 py-2.5 rounded-xl shadow-lg transition-colors flex items-center gap-2"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>{isUrdu ? 'تمام ویڈیو سیٹنگز محفوظ کریں' : 'Save All Video Settings'}</span>
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -6337,6 +6870,48 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Video Preview Popup */}
+        {previewVideoModalUrl && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-slate-900 border border-slate-700 w-full max-w-3xl rounded-3xl p-4 sm:p-6 text-white space-y-4 shadow-2xl relative">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+                <h3 className="font-black text-sm text-emerald-400 flex items-center gap-2">
+                  <Film className="w-4 h-4" />
+                  <span>{isUrdu ? 'ویڈیو کا لائیو پیش منظر (Live Video Preview)' : 'Live Video Preview'}</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setPreviewVideoModalUrl(null)}
+                  className="text-slate-400 hover:text-white p-2 rounded-xl hover:bg-slate-800 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black border border-slate-800">
+                {previewVideoModalUrl.includes('youtube.com') || previewVideoModalUrl.includes('youtu.be') ? (
+                  <iframe
+                    src={previewVideoModalUrl.replace('watch?v=', 'embed/').replace('youtu.be/', 'www.youtube.com/embed/') + '?autoplay=1'}
+                    title="Preview Video"
+                    className="w-full h-full border-0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                ) : (
+                  <video
+                    src={previewVideoModalUrl}
+                    controls
+                    autoPlay
+                    className="w-full h-full object-contain"
+                  >
+                    Your browser does not support video playback.
+                  </video>
+                )}
+              </div>
             </div>
           </div>
         )}

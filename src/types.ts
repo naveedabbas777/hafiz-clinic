@@ -228,6 +228,22 @@ export interface ClinicSettings {
   googleMapsUrl: string;
   facebookUrl?: string;
   youtubeUrl?: string;
+  // Dedicated Section Video Configurations
+  clinicVideoUrl?: string;
+  clinicVideoTitleUrdu?: string;
+  clinicVideoTitleEnglish?: string;
+  eyeCareVideoUrl?: string;
+  eyeCareVideoTitleUrdu?: string;
+  eyeCareVideoTitleEnglish?: string;
+  hairOilVideoUrl?: string;
+  hairOilVideoTitleUrdu?: string;
+  hairOilVideoTitleEnglish?: string;
+  beautyCreamVideoUrl?: string;
+  beautyCreamVideoTitleUrdu?: string;
+  beautyCreamVideoTitleEnglish?: string;
+  painReliefVideoUrl?: string;
+  painReliefVideoTitleUrdu?: string;
+  painReliefVideoTitleEnglish?: string;
 }
 
 export interface MoneySlipItem {

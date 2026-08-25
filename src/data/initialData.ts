@@ -16,6 +16,22 @@ export const initialClinicSettings: ClinicSettings = {
   googleMapsUrl: 'https://maps.google.com',
   facebookUrl: 'https://facebook.com/hafizclinic',
   youtubeUrl: 'https://youtube.com/c/hafizclinic',
+  // Section Videos
+  clinicVideoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-set-of-plateaus-seen-from-the-sky-in-a-sunset-26070-large.mp4',
+  clinicVideoTitleUrdu: 'حافظ کلینک کا مکمل تعارف، جدید کمپیوٹرائزڈ لیب و علاج کی سہولیات',
+  clinicVideoTitleEnglish: 'Hafiz Clinic Facilities, Advanced Diagnostic Labs & Treatment Overview',
+  eyeCareVideoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-tree-branches-in-the-breeze-1188-large.mp4',
+  eyeCareVideoTitleUrdu: 'کمپیوٹرائزڈ آئی چیک اپ اور پریمیم بلیو کٹ گلاسز کا لائیو مظاہرہ',
+  eyeCareVideoTitleEnglish: 'Computerized Eye Testing & Prescription Eyewear Live Demonstration',
+  hairOilVideoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-tree-branches-in-the-breeze-1188-large.mp4',
+  hairOilVideoTitleUrdu: 'ہوراب ہربل ہیئر آئل کے خالص اجزاء اور استعمال کا طریقہ',
+  hairOilVideoTitleEnglish: 'Hoorab Herbal Hair Oil Organic Formulation & Application Guide',
+  beautyCreamVideoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-set-of-plateaus-seen-from-the-sky-in-a-sunset-26070-large.mp4',
+  beautyCreamVideoTitleUrdu: 'ہوراب بیوٹی کریم اسکن گلو، نیچرل وٹامنز اور روزمرہ کیئر',
+  beautyCreamVideoTitleEnglish: 'Hoorab Radiance Beauty Cream Vitamin Enrichment & Glow Routine',
+  painReliefVideoUrl: 'https://assets.mixkit.co/videos/preview/mixkit-tree-branches-in-the-breeze-1188-large.mp4',
+  painReliefVideoTitleUrdu: 'جوڑوں اور پٹھوں کے درد کے لیے حافظ ریلیف آئل و مساج تھراپی',
+  painReliefVideoTitleEnglish: 'Hafiz Joint Pain Relief Oil & Physical Therapy Demo',
 };
 
 export const initialDoctors: Doctor[] = [

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Eye, ShieldCheck, ShoppingBag, Calendar, CheckCircle2, Phone, MessageCircle } from 'lucide-react';
-import { Product } from '../types';
+import { Eye, ShieldCheck, ShoppingBag, Calendar, CheckCircle2, Phone, MessageCircle, Play, Volume2, VolumeX, Film } from 'lucide-react';
+import { Product, ClinicSettings } from '../types';
 
 interface EyeCareViewProps {
   eyeProducts: Product[];
+  settings?: ClinicSettings;
   onAddToCart: (product: Product) => void;
   onOpenAppointment: (service?: string) => void;
   language?: 'urdu' | 'english';
@@ -11,12 +12,24 @@ interface EyeCareViewProps {
 
 export const EyeCareView: React.FC<EyeCareViewProps> = ({
   eyeProducts,
+  settings,
   onAddToCart,
   onOpenAppointment,
   language = 'english',
 }) => {
   const [selectedTab, setSelectedTab] = useState<'all' | 'glasses' | 'lenses' | 'sunglasses'>('all');
+  const [isMuted, setIsMuted] = useState(true);
   const isUrdu = language === 'urdu';
+
+  const videoUrl = settings?.eyeCareVideoUrl || 'https://assets.mixkit.co/videos/preview/mixkit-tree-branches-in-the-breeze-1188-large.mp4';
+  const videoTitle = isUrdu
+    ? (settings?.eyeCareVideoTitleUrdu || 'کمپیوٹرائزڈ آئی چیک اپ اور پریمیم چشموں کا لائیو معائنہ')
+    : (settings?.eyeCareVideoTitleEnglish || 'Computerized Eye Testing & Optical Frames Live Showcase');
+
+  const isYouTube = videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be');
+  const embedYoutubeUrl = isYouTube 
+    ? videoUrl.replace('watch?v=', 'embed/').replace('youtu.be/', 'www.youtube.com/embed/') + '?autoplay=1&mute=1&loop=1'
+    : '';
 
   const categoriesUrdu = [
     'نظر کے چشمے', 'قریب کے چشمے', 'دور کے چشمے', 'کمپیوٹر گلاسز',
@@ -67,6 +80,89 @@ export const EyeCareView: React.FC<EyeCareViewProps> = ({
                 <MessageCircle className="w-4 h-4" />
                 <span>{isUrdu ? 'واٹس ایپ فریم پسند کریں' : 'Select Frames on WhatsApp'}</span>
               </a>
+            </div>
+          </div>
+        </div>
+
+        {/* Eye Care Video Showcase */}
+        <div className="bg-gradient-to-br from-slate-900 via-teal-950 to-slate-950 text-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-800">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+            <div className="lg:col-span-7">
+              <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black shadow-2xl border border-slate-700">
+                {isYouTube ? (
+                  <iframe
+                    src={embedYoutubeUrl}
+                    title="Eye Care Video"
+                    className="w-full h-full border-0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                ) : (
+                  <>
+                    <video
+                      src={videoUrl}
+                      autoPlay
+                      loop
+                      muted={isMuted}
+                      playsInline
+                      controls
+                      className="w-full h-full object-cover"
+                    >
+                      Your browser does not support HTML5 video.
+                    </video>
+                    <div className="absolute top-3 right-3 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsMuted(!isMuted)}
+                        className="bg-black/60 hover:bg-black/80 backdrop-blur-md text-white p-2 rounded-xl text-xs font-bold transition-transform hover:scale-105 flex items-center gap-1.5 shadow-lg border border-white/20"
+                      >
+                        {isMuted ? <VolumeX className="w-4 h-4 text-amber-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+                        <span className="text-[11px]">{isMuted ? (isUrdu ? 'آواز کھولیں' : 'Unmute') : (isUrdu ? 'آواز بند' : 'Mute')}</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+                <div className="absolute bottom-2 left-2 pointer-events-none">
+                  <span className="bg-teal-600/90 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg backdrop-blur-sm flex items-center gap-1">
+                    <Film className="w-3 h-3" />
+                    <span>{isUrdu ? 'آئی کیئر ڈیمو ویڈیو' : 'Eye Care Video'}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="lg:col-span-5 space-y-4">
+              <div className="inline-flex items-center gap-1.5 bg-teal-500/20 text-teal-300 border border-teal-500/30 px-3 py-1 rounded-full text-xs font-bold">
+                <Eye className="w-3.5 h-3.5" />
+                <span>{isUrdu ? 'بصارت اور آئی ٹیسٹنگ ویڈیو' : 'Vision Health Demo'}</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-white leading-snug">
+                {videoTitle}
+              </h3>
+              <p className="text-slate-300 text-xs sm:text-sm leading-relaxed">
+                {isUrdu
+                  ? 'آنکھوں کی بصارت، کمپیوٹر اسکرین کے نقصانات سے بچاؤ، بلیو کٹ لینز اور کمپیوٹرائزڈ آئی ٹیسٹ کے مراحل کو اس لائیو ویڈیو میں دیکھیں۔'
+                  : 'Discover how computerized refraction and blue-cut optical filters shield your vision from screen fatigue, digital strain, and refractive errors.'}
+              </p>
+
+              <div className="grid grid-cols-2 gap-2.5 pt-2 text-xs font-semibold text-slate-200">
+                <div className="bg-white/10 p-2.5 rounded-xl border border-white/10 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-teal-400 shrink-0" />
+                  <span>{isUrdu ? '99% بلیو کٹ' : 'Blue Filter'}</span>
+                </div>
+                <div className="bg-white/10 p-2.5 rounded-xl border border-white/10 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{isUrdu ? 'کمپیوٹرائزڈ نمبر' : 'Exact Power'}</span>
+                </div>
+                <div className="bg-white/10 p-2.5 rounded-xl border border-white/10 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>{isUrdu ? 'پائیدار فریمز' : 'TR90 Frames'}</span>
+                </div>
+                <div className="bg-white/10 p-2.5 rounded-xl border border-white/10 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-teal-400 shrink-0" />
+                  <span>{isUrdu ? 'کانٹیکٹ لینز کٹ' : 'Soft Lenses'}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
