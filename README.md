@@ -17,6 +17,36 @@ The application features full **bilingual localization (Urdu Nastaliq & English)
 
 ---
 
+## 🖥️ Visual Tour (اسکرین شاٹس)
+
+The screenshots below show the main user journeys across the Hafiz Clinic platform. Select any image to open the original full-size view.
+
+### Public Clinic Website
+
+| Clinic experience | Services and care catalogue |
+| :---: | :---: |
+| [<img src="./images/clinic.png" alt="Hafiz Clinic public clinic page" width="100%">](./images/clinic.png) | [<img src="./images/services.png" alt="Hafiz Clinic services page" width="100%">](./images/services.png) |
+| [<img src="./images/Diseases.png" alt="Diseases and health information page" width="100%">](./images/Diseases.png) | [<img src="./images/eye-care.png" alt="Eye care service page" width="100%">](./images/eye-care.png) |
+| [<img src="./images/hair-oils.png" alt="Herbal hair oil products page" width="100%">](./images/hair-oils.png) | [<img src="./images/Beauty-Cream.png" alt="Beauty cream products page" width="100%">](./images/Beauty-Cream.png) |
+| [<img src="./images/phisiotharapy.png" alt="Physiotherapy service page" width="100%">](./images/phisiotharapy.png) | [<img src="./images/lap-reports.png" alt="Lab reports service page" width="100%">](./images/lap-reports.png) |
+| [<img src="./images/store.png" alt="Online health store" width="100%">](./images/store.png) | [<img src="./images/clinic-gallery.png" alt="Clinic gallery page" width="100%">](./images/clinic-gallery.png) |
+
+### Patient Portal
+
+| Patient dashboard | Lab reports and prescriptions |
+| :---: | :---: |
+| [<img src="./images/patient.png" alt="Patient portal dashboard" width="100%">](./images/patient.png) | [<img src="./images/patient-lab-report.png" alt="Patient lab reports view" width="100%">](./images/patient-lab-report.png) |
+| [<img src="./images/patient-invoices.png" alt="Patient invoices and bills view" width="100%">](./images/patient-invoices.png) | [<img src="./images/doctor-patient-chat.png" alt="Patient doctor chat" width="100%">](./images/doctor-patient-chat.png) |
+
+### Clinical Staff Workspaces
+
+| Doctor EMR and OPD queue | Analytics and telehealth |
+| :---: | :---: |
+| [<img src="./images/opd-queue.png" alt="Doctor EMR and OPD queue workspace" width="100%">](./images/opd-queue.png) | [<img src="./images/doc-analytics.png" alt="Doctor analytics workspace" width="100%">](./images/doc-analytics.png) |
+| [<img src="./images/doc-profiletiming.png" alt="Doctor profile and timing workspace" width="100%">](./images/doc-profiletiming.png) | [<img src="./images/doctor-patient-chat-d.png" alt="Doctor patient chat workspace" width="100%">](./images/doctor-patient-chat-d.png) |
+
+---
+
 ## 🌟 Key Functional Modules (بنیادی ماڈیولز)
 
 ### 1. 🩻 Specialized Diagnostic Laboratories & Imaging
