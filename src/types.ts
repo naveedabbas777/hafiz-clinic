@@ -638,4 +638,53 @@ export interface IPDAdmission {
   createdAt: string;
 }
 
+export interface FollowUpReminder {
+  id: string;
+  patientId?: string;
+  patientName?: string;
+  doctorName: string;
+  doctorId?: string;
+  title: string;
+  titleUrdu?: string;
+  category: 'checkup' | 'lab_test' | 'medication' | 'eye_exam' | 'physiotherapy';
+  dueDate: string;
+  dueTime?: string;
+  status: 'upcoming' | 'due_soon' | 'completed' | 'overdue';
+  priority?: 'high' | 'medium' | 'normal';
+  notes?: string;
+  notesUrdu?: string;
+  doctorAdvice?: string;
+  prescriptionRef?: string;
+  department?: string;
+}
+
+export interface DigitalMedicalReport {
+  id: string;
+  reportNumber: string;
+  patientId?: string;
+  patientName: string;
+  patientAge?: number | string;
+  patientGender?: string;
+  mrn: string;
+  testName: string;
+  testNameUrdu?: string;
+  category: 'Pathology Lab' | 'Bio Quantum Scan' | 'Eye Examination' | 'Ultrasound / Imaging' | 'Physiotherapy Assessment' | 'General Checkup';
+  doctorName: string;
+  date: string;
+  status: 'Ready' | 'In Progress' | 'Reviewed' | 'Normal' | 'Needs Attention';
+  fileUrl?: string;
+  summary?: string;
+  summaryUrdu?: string;
+  impression?: string;
+  doctorComment?: string;
+  verifiedBy?: string;
+  parameters?: Array<{
+    name: string;
+    value: string;
+    unit: string;
+    normalRange: string;
+    status: 'normal' | 'high' | 'low';
+  }>;
+}
+
 

@@ -42,6 +42,8 @@ import {
   RefreshCw,
   Download,
   Volume2,
+  Sparkles,
+  HeartPulse,
 } from 'lucide-react';
 import { Appointment, Doctor, MoneySlip, MoneySlipItem } from '../types';
 import { loginApi, getReportsApi, updateReportApi, getAppointmentsApi, updateAppointmentApi } from '../services/api';
@@ -64,6 +66,7 @@ import { printInvoiceHtml, printPrescriptionHtml, downloadInvoicePdf, downloadPr
 import { openWhatsAppNotification } from '../utils/notificationDispatcher';
 import { DoctorPatientChatView } from './DoctorPatientChatView';
 import { DigitalRxModal } from './DigitalRxModal';
+import { Telehealth } from './Telehealth';
 import { DigitalPrescription } from '../types';
 
 interface DoctorPortalProps {
@@ -87,6 +90,81 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
   const [prescriptionText, setPrescriptionText] = useState('');
   const [rxNotes, setRxNotes] = useState('');
   const [rxPrecautions, setRxPrecautions] = useState('');
+  const [followUpDays, setFollowUpDays] = useState<number>(7);
+  const [orderedLabTest, setOrderedLabTest] = useState<string>('');
+  const [selectedOrderSetId, setSelectedOrderSetId] = useState<string>('');
+
+  const CLINICAL_ORDER_SETS = [
+    {
+      id: 'joint_pain',
+      titleUrdu: 'کمر و جوڑوں کا درد (Joint & Lumbar Strain)',
+      titleEnglish: 'Joint Pain & Lumbar Strain',
+      diagnosis: 'شدید عضلاتی کھنچاؤ، جوڑوں اور مہروں کا درد (Osteoarthritis & Lumbar Strain)',
+      medicines:
+        '1. Hoorab Joint Pain Herbal Oil — رات کو مہروں اور جوڑوں پر ہلکا مساج کریں\n2. Tab Hab-e-Suranjan — 1+0+1 (کھانے کے بعد نیم گرم پانی سے)\n3. Syp Calcium & Vitamin D3 — 1 چمچ صبح ناشتے کے بعد\n4. فزیوتھراپی کمر و گھٹنے سیشن — روزانہ 1 بار (3 دن کورس)',
+      notes: 'وزن اٹھانے، جھکنے اور زمین پر بیٹھنے سے سخت گریز کریں۔ نماز کرسی پر بیٹھ کر ادا کریں۔',
+      precautions: 'کھٹی اشیاء، بڑا گوشت، چاول اور کولڈ ڈرنکس سے پرہیز کریں۔',
+      labTest: 'X-Ray Lumbar Spine (AP/LAT) + Serum Uric Acid',
+      followUpDays: 7,
+    },
+    {
+      id: 'hypertension',
+      titleUrdu: 'ہائی بلڈ پریشر و تناؤ (Hypertension)',
+      titleEnglish: 'Hypertension & Metabolic Syndrome',
+      diagnosis: 'ہائی بلڈ پریشر و اعصابی تناؤ (Essential Hypertension & Stress)',
+      medicines:
+        '1. Hab-e-Fishar Herbal Tab — 1+0+1 (صبح و شام پانی کے ساتھ)\n2. Cap Cardioprotect (Garlic & Arjuna Extract) — 1 کیپسول بعد از دوپہر کھانا\n3. Syp Relax-o-Nerve Herbal — 2 چمچ رات کو سوتے وقت',
+      notes: 'روزانہ صبح 30 منٹ ہلکی واک کریں۔ صبح و شام بلڈ پریشر نوٹ کریں اور چارٹ بنائیں۔',
+      precautions: 'کھانے میں نمک کی مقدار کم کریں۔ چکنائی، فاسٹ فوڈ اور سگریٹ نوشی سے پرہیز۔',
+      labTest: 'Serum Lipid Profile & Fasting Blood Sugar',
+      followUpDays: 14,
+    },
+    {
+      id: 'eye_strain',
+      titleUrdu: 'آنکھوں کا کھنچاؤ و خشکی (Eye Strain & Dry Eye)',
+      titleEnglish: 'Computer Eye Strain & Dry Eye',
+      diagnosis: 'کمپیوٹر و موبائل کی وجہ سے آنکھوں کی خشکی و سر درد (Asthenopia & Dry Eye)',
+      medicines:
+        '1. Hoorab Eye Drops (Herbal Soothing) — 1 قطرہ دونوں آنکھوں میں دن میں 3 بار\n2. Lubricating Tear Drops — 1 قطرہ ہر 4 گھنٹے بعد باقاعدگی سے\n3. Cap Vision Protect (Lutein & Bilberry) — 1 کیپسول روزانہ کھانے کے بعد',
+      notes: '20-20-20 کا فارمولا اپنائیں: ہر 20 منٹ سکرین کے بعد 20 سیکنڈ کے لیے 20 فٹ دور دیکھیں۔',
+      precautions: 'اندھیرے میں موبائل کا استعمال سختی سے بند کریں۔ براہ راست پنکھے یا اے سی کی ہوا سے بچیں۔',
+      labTest: 'Auto-Refraction Scan & Intraocular Pressure (IOP)',
+      followUpDays: 10,
+    },
+    {
+      id: 'gastric',
+      titleUrdu: 'معدے کی تیزابیت و جلن (Gastric Acidity)',
+      titleEnglish: 'Gastric Acidity & Dyspepsia',
+      diagnosis: 'تیزابیت معدہ و بدہضمی (Gastroesophageal Reflux & Dyspepsia)',
+      medicines:
+        '1. Syp Pudina & Fennel Herbal Carminative — 2 چمچ کھانے سے 15 منٹ پہلے\n2. Jawarrish Kamuni (Herbal Digestive) — آدھا چمچ کھانے کے بعد نیم گرم پانی سے\n3. Cap Omeprazole 20mg — 1 کیپسول صبح نہار منہ',
+      notes: 'کھانا چبا کر آہستہ کھائیں، کھانے کے فوراً بعد پانی پینے اور سونے سے گریز کریں۔',
+      precautions: 'مرچ مصالحہ، بیکری آئٹمز، چائے، سموسے پکوڑے اور تلی ہوئی چیزوں سے پرہیز کریں۔',
+      labTest: 'Ultrasound Abdomen & H. Pylori Test',
+      followUpDays: 5,
+    },
+    {
+      id: 'respiratory',
+      titleUrdu: 'موسمی نزلہ و کھانسی (Flu & Cough)',
+      titleEnglish: 'Cough, Flu & Sore Throat',
+      diagnosis: 'بالائی نظام تنفس کی سوزش و بلغمی کھانسی (Upper Respiratory Infection & Pharyngitis)',
+      medicines:
+        '1. Joshanda Herbal Cough Elixir Syrup — 2 چمچ نیم گرم پانی میں ملا کر دن میں 3 بار\n2. Tab Paracetamol 500mg — 1 گولی صبح و شام (یا بخار/درد ہونے پر)\n3. Herbal Sore Throat Lozenges — دن میں 3 سے 4 بار چوسیں',
+      notes: 'نیم گرم نمکین پانی کے غرارے دن میں 3 بار کریں۔ سوتے وقت بھاپ لیں۔',
+      precautions: 'ٹھنڈا پانی، آئس کریم، تلی ہوئی چیزیں اور گرد و غبار سے پرہیز کریں۔',
+      labTest: 'Complete Blood Count (CBC) & ESR',
+      followUpDays: 3,
+    },
+  ];
+
+  const handleApplyOrderSet = (set: typeof CLINICAL_ORDER_SETS[0]) => {
+    setSelectedOrderSetId(set.id);
+    setPrescriptionText(set.medicines);
+    setRxNotes(set.notes);
+    setRxPrecautions(set.precautions);
+    setOrderedLabTest(set.labTest);
+    setFollowUpDays(set.followUpDays);
+  };
   const [savedPrescriptions, setSavedPrescriptions] = useState<
     { id: string; patientName: string; date: string; content: string; prescriptionText?: string; rxNotes?: string; rxPrecautions?: string; doctorName?: string }[]
   >([]);
@@ -112,8 +190,8 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
 
   // Doctor Auth State
   const [isDoctorAuth, setIsDoctorAuth] = useState(false);
-  const [username, setUsername] = useState('doctor1');
-  const [password, setPassword] = useState('doc123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [loading, setLoading] = useState(false);
   const [currentDoctor, setCurrentDoctor] = useState<any>(null);
@@ -129,6 +207,34 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
   const [isOPDActive, setIsOPDActive] = useState(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isDigitalRxModalOpen, setIsDigitalRxModalOpen] = useState(false);
+
+  // Telehealth Video Consultation Modal State
+  const [isTelehealthOpen, setIsTelehealthOpen] = useState(false);
+  const [telehealthTargetUser, setTelehealthTargetUser] = useState<any>(null);
+  const [telehealthAppointmentContext, setTelehealthAppointmentContext] = useState<any>(null);
+
+  const handleStartDoctorVideoCall = (patientApp?: Appointment | null) => {
+    const target = patientApp || selectedApp || appointmentsList[0];
+    if (!target) {
+      alert(isUrdu ? 'برائے مہربانی پہلے او پی ڈی قطار سے مریض منتخب کریں۔' : 'Please select an appointment or patient first.');
+      return;
+    }
+    const docName = currentDoctor?.fullName || currentDoctor?.name || (isUrdu ? 'ڈاکٹر زیشان چوہدری' : 'Dr. Zeeshan Chaudhry');
+    setTelehealthTargetUser({
+      id: target.patientId || target.phone || 'pat-84920',
+      name: target.patientName,
+      role: 'patient',
+      phone: target.phone,
+    });
+    setTelehealthAppointmentContext({
+      id: target.id,
+      tokenNumber: target.tokenNumber,
+      problem: target.problem,
+      patientName: target.patientName,
+      doctorName: docName,
+    });
+    setIsTelehealthOpen(true);
+  };
 
   // Live OPD Calling & TV Sync State
   const [opdTokens, setOpdTokens] = useState<OPDQueueToken[]>(() => getLocalQueueTokens());
@@ -528,8 +634,84 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
       rxNotes,
       rxPrecautions,
       doctorName: docName,
+      orderedLabTest,
+      followUpDays,
     };
     setSavedPrescriptions([newRx, ...savedPrescriptions]);
+
+    // 1. AUTOMATION: Auto-dispatch Prescription to Pharmacy POS Queue
+    try {
+      const pendingRxQueue = JSON.parse(localStorage.getItem('hafiz_pending_pharmacy_rx_queue') || '[]');
+      const queueItem = {
+        id: newRx.id,
+        patientName: newRx.patientName,
+        phone: selectedApp?.phone || '0300-1234567',
+        tokenNumber: selectedApp?.tokenNumber || (selectedApp?.id ? selectedApp.id.replace('APP-', 'TK-') : 'TK-101'),
+        mrnNumber: `MRN-${((selectedApp?.phone || '').replace(/\D/g, '') || '1001').slice(-4)}`,
+        doctorName: docName,
+        date: new Date().toISOString(),
+        medicinesRaw: prescriptionText,
+        medicinesList: prescriptionText
+          .split('\n')
+          .map((l) => l.replace(/^[\d.-]+\s*/, '').trim())
+          .filter((l) => l.length > 2),
+        notes: rxNotes,
+        precautions: rxPrecautions,
+        suggestedLabTest: orderedLabTest,
+        status: 'Pending Dispensing',
+      };
+      pendingRxQueue.unshift(queueItem);
+      localStorage.setItem('hafiz_pending_pharmacy_rx_queue', JSON.stringify(pendingRxQueue.slice(0, 30)));
+    } catch (_) {}
+
+    // 2. AUTOMATION: Auto-create Follow-up Reminder in Patient Portal
+    try {
+      const existingRem = JSON.parse(localStorage.getItem('hc_patient_reminders') || '[]');
+      const followUpDate = new Date(Date.now() + (followUpDays || 7) * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      const reminder = {
+        id: `REM-${Date.now()}`,
+        patientId: (selectedApp as any)?.patientId || selectedApp?.id,
+        patientName: selectedApp?.patientName,
+        doctorName: docName,
+        reminderDate: followUpDate,
+        reason: rxNotes || selectedApp?.problem || 'فالو اپ و بحالی چیک اپ (Follow-up Clinical Checkup)',
+        status: 'Scheduled',
+        createdAt: new Date().toISOString(),
+      };
+      existingRem.unshift(reminder);
+      localStorage.setItem('hc_patient_reminders', JSON.stringify(existingRem.slice(0, 50)));
+    } catch (_) {}
+
+    // 3. AUTOMATION: Auto-dispatch Lab Order to Pathology / Radiology if ordered
+    if (orderedLabTest) {
+      try {
+        const existingOrders = JSON.parse(localStorage.getItem('hafiz_lab_orders_v2') || '[]');
+        const labOrder = {
+          id: `LAB-ORD-${Date.now()}`,
+          patientName: selectedApp?.patientName || 'Patient',
+          patientPhone: selectedApp?.phone || '',
+          patientAge: 40,
+          patientGender: 'Male',
+          mrnNumber: `MRN-${((selectedApp?.phone || '').replace(/\D/g, '') || '1001').slice(-4)}`,
+          testId: 'test-custom',
+          testNameUrdu: orderedLabTest,
+          testNameEnglish: orderedLabTest,
+          department: orderedLabTest.toLowerCase().includes('x-ray') ? 'Digital Radiology & X-Ray' : 'Clinical Pathology & Biochemistry',
+          category: orderedLabTest.toLowerCase().includes('x-ray') ? 'Radiology / X-Ray' : 'Blood & Biochemistry',
+          orderDate: new Date().toISOString(),
+          status: 'Pending Sample',
+          pricePKR: 1500,
+          paidStatus: 'Unpaid',
+          referredBy: docName,
+          parameters: [
+            { name: orderedLabTest, unit: 'Scan/Value', normalRange: 'Standard Normal' },
+          ],
+        };
+        existingOrders.unshift(labOrder);
+        localStorage.setItem('hafiz_lab_orders_v2', JSON.stringify(existingOrders.slice(0, 50)));
+      } catch (_) {}
+    }
+
     if (selectedApp) {
       handleUpdateStatus(selectedApp.id || (selectedApp as any)._id, 'Completed');
     }
@@ -537,6 +719,7 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
     setPrescriptionText('');
     setRxNotes('');
     setRxPrecautions('');
+    setOrderedLabTest('');
   };
 
   // 1-Click Push Prescribed Medicines to Pharmacy Billing Queue
@@ -735,7 +918,7 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                 onChange={(e) => setUsername(e.target.value)}
                 required
                 className="w-full bg-slate-50 border border-slate-300 p-3.5 rounded-xl text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all placeholder-slate-400"
-                placeholder="doctor1"
+                placeholder={isUrdu ? 'ڈاکٹر یوزر نیم درج کریں' : 'Enter doctor username'}
               />
             </div>
 
@@ -756,7 +939,7 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-3.5 rounded-xl text-sm transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-3.5 rounded-xl text-sm transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer mt-2"
             >
               <Lock className="w-4 h-4" />
               <span>
@@ -769,34 +952,6 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                   : 'Enter Official Workspace'}
               </span>
             </button>
-
-            {/* Demo Quick Auto-Fill for both doctors */}
-            <div className="pt-2 space-y-1.5 text-center">
-              <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                {isUrdu ? 'آسان ڈیمو لاگ ان منتخب کریں:' : 'Quick Select Demo Doctor:'}
-              </div>
-              <div className="flex items-center justify-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setUsername('doctor1');
-                    setPassword('doc123');
-                  }}
-                  className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-lg text-xs border border-emerald-200 font-bold font-mono transition-all cursor-pointer"
-                >
-                  👨‍⚕️ Dr. Zeeshan (doctor1)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setUsername('doctor2');
-                  }}
-                  className="px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-800 rounded-lg text-xs border border-teal-200 font-bold font-mono transition-all cursor-pointer"
-                >
-                  👨‍⚕️ Dr. Waqas (doctor2)
-                </button>
-              </div>
-            </div>
           </form>
 
           {/* Security Banner */}
@@ -1032,7 +1187,14 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                 </p>
               </div>
 
-              <div className="flex gap-2.5 z-10 w-full sm:w-auto">
+              <div className="flex flex-wrap gap-2.5 z-10 w-full sm:w-auto">
+                <button
+                  onClick={() => handleStartDoctorVideoCall()}
+                  className="flex-1 sm:flex-initial bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Video className="w-4 h-4 text-cyan-200" />
+                  <span>{isUrdu ? 'ویڈیو کال (Video Call)' : 'Start Video Call'}</span>
+                </button>
                 <button
                   onClick={() => setDocPage('queue')}
                   className="flex-1 sm:flex-initial bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs px-4 py-2.5 rounded-xl transition-all shadow-md flex items-center justify-center gap-1.5"
@@ -1128,7 +1290,7 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                 <div className="space-y-2.5 text-xs">
                   {doctorAppointments.slice(0, 5).map((app, idx) => (
                     <div
-                      key={app.id || idx}
+                      key={(app as any)._id || `${app.id || 'app'}-${idx}`}
                       className="p-3 bg-slate-50 hover:bg-emerald-50/50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 transition-colors"
                     >
                       <div>
@@ -1452,6 +1614,16 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
 
                           <button
                             type="button"
+                            onClick={() => handleStartDoctorVideoCall(app)}
+                            className="py-1 px-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 bg-blue-100 hover:bg-blue-600 hover:text-white text-blue-900 border border-blue-300 transition-all cursor-pointer"
+                            title={isUrdu ? 'مریض سے ویڈیو کال کریں' : 'Start Video Call'}
+                          >
+                            <Video className="w-3 h-3 text-blue-700" />
+                            <span>{isUrdu ? 'ویڈیو کال' : 'Video Call'}</span>
+                          </button>
+
+                          <button
+                            type="button"
                             onClick={() => handleUpdateStatus(app.id || (app as any)._id, 'Approved')}
                             className={`py-1 px-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition-all ${
                               app.status === 'Approved'
@@ -1513,6 +1685,14 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                 </h3>
                 {selectedApp && (
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleStartDoctorVideoCall(selectedApp)}
+                      className="text-xs bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-3.5 py-1.5 rounded-xl font-black flex items-center gap-1.5 shadow-md transition-all cursor-pointer active:scale-95"
+                    >
+                      <Video className="w-4 h-4 text-cyan-200" />
+                      <span>{isUrdu ? '🎥 ویڈیو کال شروع کریں' : '🎥 Start Video Call'}</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => setIsDigitalRxModalOpen(true)}
@@ -1875,6 +2055,42 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                     )}
                   </div>
 
+                  {/* 1-Click Clinical Order Sets (Quick Rx Templates) */}
+                  <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 p-3.5 rounded-2xl border border-emerald-200 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-xs font-black text-emerald-950">
+                        <Sparkles className="w-4 h-4 text-emerald-700 animate-pulse" />
+                        <span>{isUrdu ? '⚡ 1-کلک کلینیکل آرڈر سیٹس (فوری نسخہ ٹیمپلیٹس)' : '⚡ 1-Click Clinical Order Sets (Quick Templates)'}</span>
+                      </div>
+                      <span className="text-[10px] text-emerald-800 font-bold bg-white px-2 py-0.5 rounded-md border border-emerald-300">
+                        {isUrdu ? 'خودکار نسخہ، پرہیز، لیب و فالو اپ' : 'Auto-fills Rx, Diet, Lab & Follow-up'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 pt-1">
+                      {CLINICAL_ORDER_SETS.map((set) => {
+                        const isSelected = selectedOrderSetId === set.id;
+                        return (
+                          <button
+                            key={set.id}
+                            type="button"
+                            onClick={() => handleApplyOrderSet(set)}
+                            className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer text-xs font-bold ${
+                              isSelected
+                                ? 'bg-emerald-700 text-white border-emerald-800 shadow-md ring-2 ring-emerald-400'
+                                : 'bg-white hover:bg-emerald-100/70 border-emerald-200 text-slate-800'
+                            }`}
+                          >
+                            <div className="truncate text-[11px]">{isUrdu ? set.titleUrdu : set.titleEnglish}</div>
+                            <div className={`text-[9.5px] mt-0.5 truncate ${isSelected ? 'text-emerald-100' : 'text-slate-500'}`}>
+                              {set.followUpDays} دن فالو اپ + لیب
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   {/* Medicines Prescription Field */}
                   <div>
                     <label className="block mb-1.5 text-slate-800 font-bold flex items-center justify-between">
@@ -1915,6 +2131,44 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                         placeholder={isUrdu ? 'ٹھنڈے پانی، چاول اور تلی ہوئی چیزوں سے پرہیز کریں۔' : 'Avoid cold drinks, rice, and oily food.'}
                         className="w-full bg-slate-50 border border-slate-300 rounded-xl p-3 text-slate-900 text-xs focus:ring-2 focus:ring-emerald-500"
                       />
+                    </div>
+                  </div>
+
+                  {/* Automated Lab & Follow-up Row */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs">
+                    <div>
+                      <label className="block mb-1 text-slate-700 font-bold">
+                        {isUrdu ? '🔬 خودکار لیبارٹری و ریڈیالوجی آرڈر (Auto Lab / X-Ray Push)' : 'Suggested Diagnostic Lab / X-Ray'}
+                      </label>
+                      <input
+                        type="text"
+                        value={orderedLabTest}
+                        onChange={(e) => setOrderedLabTest(e.target.value)}
+                        placeholder={isUrdu ? 'مثال: CBC, Lipid Profile, X-Ray Lumbar Spine...' : 'e.g. CBC, Ultrasound Abdomen, X-Ray...'}
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-semibold focus:ring-2 focus:ring-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block mb-1 text-slate-700 font-bold">
+                        {isUrdu ? '📅 اگلا فالو اپ وزٹ شیڈول (Patient Dashboard Follow-up)' : 'Follow-up Clinical Visit'}
+                      </label>
+                      <div className="flex items-center gap-2">
+                        {[3, 5, 7, 10, 14].map((days) => (
+                          <button
+                            key={days}
+                            type="button"
+                            onClick={() => setFollowUpDays(days)}
+                            className={`flex-1 py-2 px-1 rounded-xl font-mono font-bold text-center border transition-all cursor-pointer ${
+                              followUpDays === days
+                                ? 'bg-emerald-700 text-white border-emerald-800'
+                                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                            }`}
+                          >
+                            {days} {isUrdu ? 'دن' : 'd'}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
 
@@ -2700,6 +2954,17 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
           }}
         />
       )}
+
+      {/* Telehealth Live WebRTC Video Consultation Screen */}
+      <Telehealth
+        isOpen={isTelehealthOpen}
+        onClose={() => setIsTelehealthOpen(false)}
+        currentUser={currentDoctor}
+        targetUser={telehealthTargetUser}
+        callerRole="doctor"
+        appointmentContext={telehealthAppointmentContext}
+        language={language}
+      />
 
       {/* FOOTER BAR FOR DOCTOR WORKSPACE */}
       <footer className="bg-slate-900 text-slate-400 text-xs py-4 border-t border-slate-800 mt-auto">

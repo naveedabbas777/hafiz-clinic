@@ -41,6 +41,99 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
   const [discountAmount, setDiscountAmount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<'Cash' | 'Card' | 'EasyPaisa' | 'JazzCash'>('Cash');
 
+  // Doctor Digital Prescriptions Queue (1-Click Dispensing)
+  const [pendingDoctorRxList, setPendingDoctorRxList] = useState<any[]>(() => {
+    const saved = localStorage.getItem('hafiz_pending_pharmacy_rx_queue');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (_) {}
+    }
+    return [
+      {
+        id: 'Rx-101',
+        patientName: 'محمد فاروق (Muhammad Farooq)',
+        phone: '0301-9876543',
+        tokenNumber: 'TK-101',
+        mrnNumber: 'MRN-6543',
+        doctorName: 'Dr. Zeeshan Chaudhry (MBBS)',
+        date: new Date().toISOString(),
+        medicinesList: [
+          'Hoorab Joint Pain Herbal Oil',
+          'Tab Hab-e-Suranjan',
+          'Syp Calcium & Vitamin D3',
+        ],
+        notes: 'وزن اٹھانے سے پرہیز کریں۔',
+        status: 'Pending Dispensing',
+      },
+      {
+        id: 'Rx-102',
+        patientName: 'چوہدری بشیر احمد (Ch. Bashir)',
+        phone: '0321-7654321',
+        tokenNumber: 'TK-102',
+        mrnNumber: 'MRN-4321',
+        doctorName: 'Dr. Waqas Saghir (MBBS)',
+        date: new Date().toISOString(),
+        medicinesList: [
+          'Hab-e-Fishar Herbal Tab',
+          'Cap Cardioprotect',
+          'Syp Relax-o-Nerve',
+        ],
+        notes: 'صبح و شام بی پی چیک کریں۔',
+        status: 'Pending Dispensing',
+      },
+    ];
+  });
+
+  const handleLoadRxIntoCart = (rx: any) => {
+    setCustomerName(rx.patientName || 'OPD Patient');
+    setCustomerPhone(rx.phone || '');
+
+    const newCartItems: PosCartItem[] = [];
+    (rx.medicinesList || []).forEach((medStr: string, idx: number) => {
+      const cleanMedName = medStr.split('—')[0].split('-')[0].trim();
+      const matchedBatch = batches.find(
+        (b) =>
+          b.productNameUrdu.toLowerCase().includes(cleanMedName.toLowerCase()) ||
+          b.productNameEnglish.toLowerCase().includes(cleanMedName.toLowerCase()) ||
+          cleanMedName.toLowerCase().includes(b.productNameEnglish.toLowerCase())
+      );
+
+      if (matchedBatch) {
+        newCartItems.push({ batch: matchedBatch, quantity: 1 });
+      } else {
+        const fallbackBatch: PharmacyBatchItem = {
+          id: `BAT-RX-${Date.now()}-${idx}`,
+          productId: cleanMedName.toLowerCase().replace(/\s+/g, '-'),
+          productNameUrdu: cleanMedName,
+          productNameEnglish: cleanMedName,
+          barcode: String(896400000000 + Math.floor(Math.random() * 99999)),
+          batchNumber: `BAT-RX-${Math.floor(100 + Math.random() * 900)}`,
+          expiryDate: '2028-12-31',
+          costPricePKR: 450,
+          salePricePKR: 850,
+          currentStock: 25,
+          minThreshold: 5,
+          rackLocation: 'Dispensing Rack',
+          supplierName: 'Doctor Rx Requisition',
+        };
+        newCartItems.push({ batch: fallbackBatch, quantity: 1 });
+      }
+    });
+
+    setPosCart(newCartItems);
+
+    const updatedQueue = pendingDoctorRxList.filter((r) => r.id !== rx.id);
+    setPendingDoctorRxList(updatedQueue);
+    localStorage.setItem('hafiz_pending_pharmacy_rx_queue', JSON.stringify(updatedQueue));
+    alert(
+      isUrdu
+        ? `✅ مریض ${rx.patientName} کا نسخہ فارمیسی کاؤنٹر کارٹ میں لوڈ کر دیا گیا ہے۔`
+        : `Rx for ${rx.patientName} loaded into cart!`
+    );
+  };
+
   // New Batch Modal
   const [isAddBatchOpen, setIsAddBatchOpen] = useState(false);
   const [newBatch, setNewBatch] = useState<Partial<PharmacyBatchItem>>({
@@ -328,6 +421,74 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
           </span>
         </div>
       </div>
+
+      {/* Doctor Digital Prescriptions Ready to Dispense Queue (1-Click Dispensing) */}
+      {pendingDoctorRxList.length > 0 && (
+        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-2 border-emerald-400 p-4 sm:p-5 rounded-3xl space-y-3 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-200 pb-2">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black">
+                <Sparkles className="w-4 h-4 text-amber-300 animate-pulse" />
+              </div>
+              <div>
+                <h4 className="font-black text-slate-900 text-sm">
+                  {isUrdu
+                    ? '🚨 او پی ڈی ڈاکٹر کے جاری کردہ نسخہ جات (Doctor Prescriptions Queue)'
+                    : '🚨 Active Doctor Prescriptions Ready for Dispensing'}
+                </h4>
+                <p className="text-[11px] text-slate-600">
+                  {isUrdu
+                    ? 'ڈاکٹر زیشان / ڈاکٹر وقاص کے تجویز کردہ نسخہ جات یہاں خودکار ظاہر ہوتے ہیں۔ ۱-کلک سے فارمیسی بل میں لوڈ کریں۔'
+                    : 'Prescriptions issued in the OPD suite automatically arrive here for 1-click dispensing & stock deduction.'}
+                </p>
+              </div>
+            </div>
+            <span className="bg-emerald-700 text-white text-xs font-black px-3 py-1 rounded-full">
+              {pendingDoctorRxList.length} {isUrdu ? 'نسخہ جات تیار ہیں' : 'Ready'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {pendingDoctorRxList.map((rx) => (
+              <div
+                key={rx.id}
+                className="bg-white p-3.5 rounded-2xl border border-emerald-200 shadow-xs flex flex-col justify-between gap-2.5"
+              >
+                <div>
+                  <div className="flex items-center justify-between font-bold text-xs">
+                    <span className="text-slate-900 text-sm font-black">{rx.patientName}</span>
+                    <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded-md font-mono text-[10px]">
+                      {rx.tokenNumber} • {rx.mrnNumber}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-emerald-700 font-bold mt-0.5">
+                    {rx.doctorName}
+                  </div>
+                  <div className="mt-1.5 p-2 bg-slate-50 rounded-xl border border-slate-200 text-[11px] font-mono text-slate-800 space-y-0.5">
+                    {(rx.medicinesList || []).map((m: string, i: number) => (
+                      <div key={i} className="truncate">• {m}</div>
+                    ))}
+                  </div>
+                  {rx.notes && (
+                    <div className="text-[10px] text-slate-500 mt-1 italic">
+                      "{rx.notes}"
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleLoadRxIntoCart(rx)}
+                  className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>{isUrdu ? '⚡ 1-کلک کارٹ میں لوڈ کریں (Load Rx to POS)' : '⚡ 1-Click Load into POS Cart'}</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Main POS & Inventory Workspace Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

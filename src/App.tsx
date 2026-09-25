@@ -30,6 +30,7 @@ import { HomeDeliveryView } from './components/HomeDeliveryView';
 import { StoreView } from './components/StoreView';
 import { AppointmentModal } from './components/AppointmentModal';
 import { PatientPortalView } from './components/PatientPortalView';
+import { PatientDashboardView } from './components/PatientDashboardView';
 import { DoctorPortalView } from './components/DoctorPortalView';
 import { AdminPanel } from './components/AdminPanel';
 import { FAQSection } from './components/FAQSection';
@@ -107,6 +108,10 @@ export default function App() {
       seotools: {
         ur: 'SEO اسکیما و میٹا مینجر | حافظ کلینک',
         en: 'SEO Schema, Meta & Sitemap Center | Hafiz Clinic',
+      },
+      'patient-dashboard': {
+        ur: 'مریض ڈیش بورڈ — اپائنٹمنٹس، میڈیکل رپورٹس و فالو اپ | حافظ کلینک',
+        en: 'Patient Dashboard — Appointments, Medical Reports & Follow-ups | Hafiz Clinic',
       },
     };
 
@@ -397,6 +402,21 @@ export default function App() {
           </div>
         )}
 
+        {activeView === 'patient-dashboard' && (
+          <PatientDashboardView
+            currentUser={currentUser}
+            doctors={doctors}
+            appointments={appointments}
+            clinicSettings={settings}
+            language={language}
+            setLanguage={setLanguage}
+            onLoginSuccess={(user) => setCurrentUser(user)}
+            onLogout={() => setCurrentUser(null)}
+            onOpenAppointment={(docPref) => handleOpenAppointment(docPref)}
+            setActiveView={setActiveView}
+          />
+        )}
+
         {activeView === 'patient-portal' && (
           <PatientPortalView
             currentUser={currentUser}
@@ -443,6 +463,7 @@ export default function App() {
             language={language}
             onLogin={(user) => setCurrentUser(user)}
             onLogout={() => setCurrentUser(null)}
+            clinicSettings={settings}
           />
         )}
 

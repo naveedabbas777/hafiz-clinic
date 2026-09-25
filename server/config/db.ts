@@ -1,3 +1,5 @@
+import dotenv from 'dotenv';
+dotenv.config({ override: true });
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import { User } from '../models/User';
@@ -5,8 +7,7 @@ import { Doctor } from '../models/Doctor';
 import { Disease } from '../models/Disease';
 import { Product } from '../models/Product';
 
-const ATLAS_URI = 'mongodb+srv://naveed124777:Naveed%400788@cluster0.dgcnw4s.mongodb.net/clinic?retryWrites=true&w=majority&appName=Cluster0';
-export const MONGODB_URI = (process.env.MONGODB_URI && !process.env.MONGODB_URI.includes('localhost')) ? process.env.MONGODB_URI : ATLAS_URI;
+export const MONGODB_URI = process.env.MONGODB_URI || '';
 
 let isConnected = false;
 
@@ -15,10 +16,15 @@ export function getMongoConnectedStatus() {
 }
 
 export async function connectDB() {
+  const uri = process.env.MONGODB_URI || MONGODB_URI;
+  if (!uri) {
+    console.warn('MongoDB Atlas URI is empty in process.env.MONGODB_URI');
+    return;
+  }
   try {
-    await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 5000 });
+    await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
     isConnected = true;
-    console.log('Successfully connected to MongoDB Atlas:', MONGODB_URI.split('@')[1] || MONGODB_URI);
+    console.log('Successfully connected to MongoDB Atlas:', uri.split('@')[1] || uri);
     await seedInitialData();
   } catch (err: any) {
     isConnected = false;

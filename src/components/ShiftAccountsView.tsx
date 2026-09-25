@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { DollarSign, CreditCard, Calculator, Printer, CheckCircle, TrendingUp, TrendingDown, Users, FileText, ArrowRight, ShieldCheck, AlertCircle } from 'lucide-react';
 import { Doctor, MoneySlip, HospitalExpense, DailyCashShiftReport, DoctorRevenueShare } from '../types';
+import { ShiftHandoverModal } from './ShiftHandoverModal';
 
 interface Props {
   doctors: Doctor[];
@@ -14,6 +15,7 @@ export function ShiftAccountsView({ doctors, slips, expenses, language, clinicSe
   const isUrdu = language === 'urdu';
 
   const [activeTab, setActiveTab] = useState<'shift_closing' | 'doctor_split'>('shift_closing');
+  const [showShiftHandoverModal, setShowShiftHandoverModal] = useState<boolean>(false);
 
   // Shift closing state
   const [cashierName, setCashierName] = useState('محمد علی (کاؤنٹر انچارج)');
@@ -234,31 +236,42 @@ export function ShiftAccountsView({ doctors, slips, expenses, language, clinicSe
   return (
     <div className="space-y-6" dir={isUrdu ? 'rtl' : 'ltr'}>
       {/* Navigation Tabs */}
-      <div className="flex bg-white p-1.5 rounded-3xl border border-slate-200 shadow-sm gap-2 max-w-md">
-        <button
-          type="button"
-          onClick={() => setActiveTab('shift_closing')}
-          className={`flex-1 py-2.5 px-4 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
-            activeTab === 'shift_closing'
-              ? 'bg-emerald-800 text-white shadow-sm'
-              : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <DollarSign className="w-4 h-4" />
-          <span>{isUrdu ? 'شفٹ کیش کلوزنگ' : 'Daily Shift Closing'}</span>
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex bg-white p-1.5 rounded-3xl border border-slate-200 shadow-sm gap-2 max-w-md">
+          <button
+            type="button"
+            onClick={() => setActiveTab('shift_closing')}
+            className={`flex-1 py-2.5 px-4 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
+              activeTab === 'shift_closing'
+                ? 'bg-emerald-800 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <DollarSign className="w-4 h-4" />
+            <span>{isUrdu ? 'شفٹ کیش کلوزنگ' : 'Daily Shift Closing'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('doctor_split')}
+            className={`flex-1 py-2.5 px-4 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
+              activeTab === 'doctor_split'
+                ? 'bg-emerald-800 text-white shadow-sm'
+                : 'text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>{isUrdu ? 'ڈاکٹر ریونیو شیئر' : 'Doctor Split'}</span>
+          </button>
+        </div>
 
         <button
           type="button"
-          onClick={() => setActiveTab('doctor_split')}
-          className={`flex-1 py-2.5 px-4 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 ${
-            activeTab === 'doctor_split'
-              ? 'bg-emerald-800 text-white shadow-sm'
-              : 'text-slate-600 hover:bg-slate-50'
-          }`}
+          onClick={() => setShowShiftHandoverModal(true)}
+          className="bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs px-4 py-2.5 rounded-2xl shadow-sm flex items-center gap-2 transition-all cursor-pointer"
         >
-          <Users className="w-4 h-4" />
-          <span>{isUrdu ? 'ڈاکٹر ریونیو شیئر' : 'Doctor Split'}</span>
+          <FileText className="w-4 h-4 text-amber-300" />
+          <span>{isUrdu ? '📋 مکمل شفٹ ہینڈ اوور (PDF رپورٹ)' : '📋 Automated Shift Handover (PDF)'}</span>
         </button>
       </div>
 
@@ -469,6 +482,17 @@ export function ShiftAccountsView({ doctors, slips, expenses, language, clinicSe
           </div>
         </div>
       )}
+
+      {/* Automated Shift Handover Modal */}
+      <ShiftHandoverModal
+        isOpen={showShiftHandoverModal}
+        onClose={() => setShowShiftHandoverModal(false)}
+        currentUser={null}
+        doctors={doctors}
+        slips={slips}
+        clinicSettings={clinicSettings}
+        language={language}
+      />
     </div>
   );
 }

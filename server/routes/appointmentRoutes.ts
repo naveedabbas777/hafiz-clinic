@@ -138,7 +138,19 @@ router.get('/', async (req: Request, res: Response) => {
           }
         }
       }
-      return res.json({ success: true, appointments: dbList });
+      const seenIds = new Set<string>();
+      const normalizedList = dbList.map((a: any, idx: number) => {
+        const item = a.toObject ? a.toObject() : { ...a };
+        const rawId = item.id || (item._id ? String(item._id) : `APP-${String(idx + 1).padStart(3, '0')}`);
+        if (seenIds.has(rawId)) {
+          item.id = `${rawId}-${item._id ? String(item._id).slice(-4) : idx + 1}`;
+        } else {
+          item.id = rawId;
+        }
+        seenIds.add(item.id);
+        return item;
+      });
+      return res.json({ success: true, appointments: normalizedList });
     }
 
     let filtered = [...inMemoryAppointments];

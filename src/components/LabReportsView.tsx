@@ -127,21 +127,9 @@ export const LabReportsView: React.FC<LabReportsViewProps> = ({ language = 'engl
             </div>
           </form>
 
-          <div className="mt-3 text-xs text-gray-500 flex items-center gap-2">
-            <span>💡 {isUrdu ? 'ڈیفالٹ ٹیسٹ MRN استعمال کریں:' : 'Try Demo MRNs:'}</span>
-            <button
-              onClick={() => { setMrnInput('MRN-84920'); }}
-              className="text-emerald-700 font-bold underline hover:text-emerald-900"
-            >
-              MRN-84920
-            </button>
-            <span>•</span>
-            <button
-              onClick={() => { setMrnInput('MRN-91024'); }}
-              className="text-emerald-700 font-bold underline hover:text-emerald-900"
-            >
-              MRN-91024
-            </button>
+          <div className="mt-3 text-xs text-gray-500 flex flex-wrap items-center gap-2">
+            <span>💡 {isUrdu ? 'رہنمائی: اپنا میڈیکل ریکارڈ نمبر (MRN) درج کریں جو آپ کے نسخے یا لیب پرچی پر درج ہے:' : 'Guidance: Enter the Medical Record Number (MRN) printed on your prescription or diagnostic receipt:'}</span>
+            <span className="font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md">MRN-XXXXX</span>
           </div>
         </div>
 

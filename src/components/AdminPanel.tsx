@@ -932,8 +932,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Admin Auth State
   const [isAdminAuth, setIsAdminAuth] = useState<boolean>(false);
-  const [adminUsername, setAdminUsername] = useState<string>('admin');
-  const [adminPassword, setAdminPassword] = useState<string>('admin123');
+  const [adminUsername, setAdminUsername] = useState<string>('');
+  const [adminPassword, setAdminPassword] = useState<string>('');
   const [authError, setAuthError] = useState<string>('');
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
 
@@ -1522,7 +1522,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 onChange={(e) => setAdminUsername(e.target.value)}
                 required
                 className="w-full bg-slate-50 border border-slate-300 p-3 rounded-xl text-slate-900 font-mono font-bold focus:ring-2 focus:ring-emerald-500"
-                placeholder="admin"
+                placeholder={isUrdu ? 'ایڈمنسٹریٹر یوزر نیم درج کریں' : 'Enter administrator username'}
               />
             </div>
 
@@ -4416,7 +4416,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     const displayId = app.id && app.id.startsWith('APP-') ? app.id : `APP-${String(idx + 1).padStart(3, '0')}`;
                     const tokenNum = app.tokenNumber || (app as any).token || (app.id && app.id.startsWith('APP-') ? app.id.replace('APP-', 'TK-') : `TK-${idx + 101}`);
                     return (
-                      <tr key={app.id || idx} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                      <tr key={(app as any)._id || `${app.id || 'app'}-${idx}`} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
                         <td className="p-2.5 font-mono font-bold text-amber-700">
                           <div>{displayId}</div>
                           <div className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-1.5 py-0.5 rounded text-[10px] inline-block mt-0.5 font-bold">

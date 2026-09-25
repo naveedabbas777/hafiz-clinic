@@ -506,7 +506,7 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({
                       myAppointments.map((app, idx) => {
                         const displayId = app.id && app.id.startsWith('APP-') ? app.id : `APP-${String(idx + 1).padStart(3, '0')}`;
                         return (
-                          <div key={app.id || idx} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                          <div key={(app as any)._id || `${app.id || 'app'}-${idx}`} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
                             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-2">
                               <div className="flex items-center gap-2 font-mono text-sm font-black text-emerald-800">
                                 <span className="bg-emerald-100 text-emerald-900 px-2.5 py-0.5 rounded-lg border border-emerald-300">

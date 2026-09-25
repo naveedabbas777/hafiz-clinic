@@ -64,6 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'physio', labelUrdu: 'فزیوتھراپی', labelEnglish: 'Physiotherapy' },
     { id: 'lab-reports', labelUrdu: 'لیب رپورٹس', labelEnglish: 'Lab Reports' },
     { id: 'store', labelUrdu: 'آن لائن اسٹور', labelEnglish: 'Store' },
+    { id: 'patient-dashboard', labelUrdu: '🏥 مریض ڈیش بورڈ', labelEnglish: '🏥 Patient Dashboard' },
     { id: 'patient-portal', labelUrdu: 'مریض پورٹل', labelEnglish: 'Patient Portal' },
     { id: 'staff-portals', labelUrdu: '🏥 عملہ و شعبہ جاتی پورٹلز', labelEnglish: '🏥 Staff Hub' },
     { id: 'gallery', labelUrdu: 'گیلری', labelEnglish: 'Gallery' },
@@ -199,6 +200,7 @@ export const Header: React.FC<HeaderProps> = ({
                     else if (currentUser.role === 'ipd_incharge') setActiveView('ipd-ward');
                     else if (currentUser.role === 'lab_doctor') setActiveView('pathology-lab');
                     else if (currentUser.role === 'doctor') setActiveView('doctor-portal');
+                    else if (currentUser.role === 'patient') setActiveView('patient-dashboard');
                     else setActiveView('admin');
                   }}
                   className="flex items-center gap-1.5 text-xs font-bold text-emerald-950 hover:underline"
@@ -342,11 +344,19 @@ export const Header: React.FC<HeaderProps> = ({
 
           <div className="grid grid-cols-2 gap-2 text-xs">
             <button
+              onClick={() => handleNavClick('patient-dashboard')}
+              className="bg-emerald-800 text-white py-2.5 rounded-xl text-center font-bold flex items-center justify-center gap-1"
+            >
+              <span>{language === 'urdu' ? 'مریض ڈیش بورڈ' : 'Patient Dashboard'}</span>
+            </button>
+            <button
               onClick={() => handleNavClick('patient-portal')}
               className="bg-slate-800 py-2.5 rounded-xl text-center text-emerald-300 font-bold"
             >
               {language === 'urdu' ? 'مریض پورٹل' : 'Patient Portal'}
             </button>
+          </div>
+          <div className="grid grid-cols-1 gap-2 text-xs">
             <button
               onClick={() => handleNavClick('admin')}
               className="bg-slate-800 py-2.5 rounded-xl text-center text-slate-300 font-bold"

@@ -4,22 +4,15 @@ import {
   Lock,
   UserCheck,
   ShieldCheck,
-  Key,
   AlertCircle,
   CheckCircle2,
-  Sparkles,
-  ArrowRight,
-  Stethoscope,
-  Bed,
-  Heart,
-  ShoppingCart,
-  Radio,
-  Activity,
+  Building2,
   Eye,
+  EyeOff,
+  HelpCircle,
 } from 'lucide-react';
 import { StaffUser } from '../types';
 import {
-  getOperationalStaffOnly,
   authenticateStaffUser,
 } from '../data/staffData';
 
@@ -37,10 +30,10 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
   language = 'english',
 }) => {
   const isUrdu = language === 'urdu';
-  const staffList = getOperationalStaffOnly();
 
   const [inputUsername, setInputUsername] = useState<string>('');
   const [inputPassword, setInputPassword] = useState<string>('');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string>('');
   const [authSuccess, setAuthSuccess] = useState<string>('');
   const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
@@ -98,36 +91,12 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
     }, 300);
   };
 
-  const handleSelectDemoUser = (staff: StaffUser) => {
-    setInputUsername(staff.username);
-    setInputPassword(staff.password || 'doc123');
-    setAuthError('');
-    setAuthSuccess('');
-  };
-
-  const getRoleIcon = (role: string) => {
-    switch (role) {
-      case 'doctor':
-        return <Stethoscope className="w-3.5 h-3.5 text-emerald-700" />;
-      case 'nurse':
-        return <Heart className="w-3.5 h-3.5 text-rose-700" />;
-      case 'pharmacist':
-        return <ShoppingCart className="w-3.5 h-3.5 text-amber-700" />;
-      case 'ipd_incharge':
-        return <Bed className="w-3.5 h-3.5 text-teal-700" />;
-      case 'lab_doctor':
-        return <Activity className="w-3.5 h-3.5 text-purple-700" />;
-      default:
-        return <ShieldCheck className="w-3.5 h-3.5 text-slate-700" />;
-    }
-  };
-
   return (
     <div
       className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
-      dir="ltr"
+      dir={isUrdu ? 'rtl' : 'ltr'}
     >
-      <div className="bg-white border border-slate-200 w-full max-w-xl rounded-3xl p-6 sm:p-7 text-slate-900 space-y-5 shadow-2xl relative my-8">
+      <div className="bg-white border border-slate-200 w-full max-w-md rounded-3xl p-6 sm:p-7 text-slate-900 space-y-5 shadow-2xl relative my-8">
         {/* Close Button */}
         <button
           type="button"
@@ -145,7 +114,7 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-black text-lg text-slate-900">
-                {isUrdu ? 'اسٹاف ممبر لاگ ان اسکرین' : 'Hospital Staff Member Login'}
+                {isUrdu ? 'اسٹاف ممبر لاگ ان پورٹل' : 'Hospital Staff Member Login'}
               </h3>
               <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full uppercase">
                 RBAC Security
@@ -153,7 +122,7 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
               {isUrdu
-                ? 'ایڈمن کے جاری کردہ کریڈنشلز کے ذریعے اپنے شعبہ جاتی پورٹل میں لاگ ان کریں'
+                ? 'ایڈمنسٹریشن کے جاری کردہ کریڈنشلز کے ذریعے اپنے شعبہ جاتی پورٹل میں داخل ہوں'
                 : 'Sign in with your Admin-issued staff username & password to access your department.'}
             </p>
           </div>
@@ -178,15 +147,16 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
         <form onSubmit={handleAuthenticate} className="space-y-4 text-xs font-semibold">
           <div>
             <label className="block text-slate-700 mb-1.5 font-bold">
-              {isUrdu ? 'اسٹاف یوزر نیم (Staff Username)' : 'Staff Username'} <span className="text-rose-600">*</span>
+              {isUrdu ? 'اسٹاف یوزر نیم (Staff Username / ID)' : 'Staff Username / ID'} <span className="text-rose-600">*</span>
             </label>
             <input
               type="text"
               required
               value={inputUsername}
               onChange={(e) => setInputUsername(e.target.value)}
-              placeholder="e.g. doctor1, nurse1, pharmacist, dr_xray, dr_pathology"
-              className="w-full bg-slate-50 border border-slate-300 p-3 rounded-xl text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              placeholder={isUrdu ? 'اپنا اسٹاف یوزر نیم درج کریں' : 'Enter your assigned staff username'}
+              className="w-full bg-slate-50 border border-slate-300 p-3 rounded-xl text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-left"
+              dir="ltr"
             />
           </div>
 
@@ -194,20 +164,31 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
             <label className="block text-slate-700 mb-1.5 font-bold">
               {isUrdu ? 'پاس ورڈ (Password)' : 'Account Password'} <span className="text-rose-600">*</span>
             </label>
-            <input
-              type="password"
-              required
-              value={inputPassword}
-              onChange={(e) => setInputPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full bg-slate-50 border border-slate-300 p-3 rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                value={inputPassword}
+                onChange={(e) => setInputPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full bg-slate-50 border border-slate-300 p-3 pr-10 rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-emerald-500 text-left"
+                dir="ltr"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                title={showPassword ? 'Hide Password' : 'Show Password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           <button
             type="submit"
             disabled={isAuthenticating}
-            className="w-full py-3.5 bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full py-3.5 bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer mt-2"
           >
             <UserCheck className="w-4 h-4" />
             <span>
@@ -218,48 +199,16 @@ export const StaffLoginModal: React.FC<StaffLoginModalProps> = ({
           </button>
         </form>
 
-        {/* Quick Demo Staff Autofill Buttons */}
-        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs space-y-2">
-          <div className="flex items-center justify-between text-slate-700 font-bold">
-            <span className="flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-              <span>{isUrdu ? 'فوری ٹیسٹ لاگ ان اکاؤنٹس (Quick Select):' : 'Click Any Active Staff Member to Test Login:'}</span>
-            </span>
-            <span className="text-[10px] text-slate-500 font-mono">{staffList.length} Active Accounts</span>
+        {/* Official Governance & Help Note */}
+        <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-[11px] text-slate-500 space-y-1.5 leading-relaxed">
+          <div className="flex items-center gap-1.5 text-slate-700 font-bold">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>{isUrdu ? 'کلینیکل سیکیورٹی و رازداری پالیسی' : 'Institutional Credentials Policy'}</span>
           </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 max-h-44 overflow-y-auto">
-            {staffList.map((staff) => (
-              <button
-                key={staff.id}
-                type="button"
-                onClick={() => handleSelectDemoUser(staff)}
-                className={`p-2.5 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
-                  inputUsername === staff.username
-                    ? 'bg-emerald-50 border-emerald-400 text-emerald-950 ring-1 ring-emerald-400'
-                    : 'bg-white border-slate-200 hover:border-emerald-300 text-slate-800'
-                }`}
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center shrink-0">
-                    {getRoleIcon(staff.role)}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="font-bold text-[11px] truncate">{staff.name}</div>
-                    <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
-                      <span>User:</span>
-                      <strong className="text-slate-800">{staff.username}</strong>
-                    </div>
-                  </div>
-                </div>
-                <ArrowRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              </button>
-            ))}
-          </div>
-          <p className="text-[10px] text-slate-500 text-center pt-1">
+          <p>
             {isUrdu
-              ? 'کسی بھی اسٹاف ممبر پر کلک کریں، یوزر نیم و پاس ورڈ خود بخود بھر جائے گا۔'
-              : 'Clicking any staff member automatically populates their verified credentials.'}
+              ? 'اگر آپ کا پاس ورڈ کام نہیں کر رہا یا نیا اکاؤنٹ درکار ہے تو ہسپتال ایڈمن بلاک (ایکسٹینشن 101) سے رابطہ فرمائیں۔'
+              : 'All staff accounts are confidential and regulated under Punjab Healthcare Commission guidelines. For credentials reset, contact IT Administration (Ext: 101).'}
           </p>
         </div>
       </div>

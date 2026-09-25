@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { StaffUser } from '../types';
 import { INITIAL_STAFF_USERS } from '../data/staffData';
+import { ShiftHandoverModal } from './ShiftHandoverModal';
 
 export interface NursingVitalsEntry {
   id: string;
@@ -90,6 +91,7 @@ interface NursingCarePortalViewProps {
   onLogin?: (user: StaffUser) => void;
   onLogout?: () => void;
   language?: 'urdu' | 'english';
+  clinicSettings?: any;
 }
 
 export const NursingCarePortalView: React.FC<NursingCarePortalViewProps> = ({
@@ -97,15 +99,18 @@ export const NursingCarePortalView: React.FC<NursingCarePortalViewProps> = ({
   onLogin,
   onLogout,
   language = 'english',
+  clinicSettings,
 }) => {
   const isUrdu = language === 'urdu';
+
+  const [showShiftHandoverModal, setShowShiftHandoverModal] = useState<boolean>(false);
 
   // Authentication State
   const isNurseAuthenticated =
     currentUser && (currentUser.role === 'nurse' || currentUser.role === 'admin' || currentUser.role === 'ipd_incharge');
 
-  const [usernameInput, setUsernameInput] = useState('nurse1');
-  const [passwordInput, setPasswordInput] = useState('nurse123');
+  const [usernameInput, setUsernameInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
   const [authError, setAuthError] = useState('');
 
   // Active Nursing Tab
@@ -252,21 +257,8 @@ export const NursingCarePortalView: React.FC<NursingCarePortalViewProps> = ({
       if (onLogin) onLogin(matched);
       setAuthError('');
     } else {
-      setAuthError(isUrdu ? 'غلط یوزر نام یا پاس ورڈ! برائے مہربانی نرس یوزر (nurse1) یا ایڈمن استعمال کریں۔' : 'Invalid credentials. Please use nurse username (nurse1 / nurse123).');
+      setAuthError(isUrdu ? 'غلط یوزر نام یا پاس ورڈ! برائے مہربانی اپنا تفویض کردہ نرس یوزر نام و پاس ورڈ درج کریں۔' : 'Invalid credentials. Please verify your authorized nursing staff username and password.');
     }
-  };
-
-  const handleQuickDemoNurseLogin = () => {
-    const nurseUser = INITIAL_STAFF_USERS.find((u) => u.username === 'nurse1') || {
-      id: 'staff-nurse-1',
-      username: 'nurse1',
-      name: 'Staff Nurse Fouzia Parveen',
-      nameUrdu: 'نرس فوزیہ پروین (سٹاف نرس)',
-      role: 'nurse',
-      department: 'Inpatient Nursing Station & Care Unit',
-      isActive: true,
-    };
-    if (onLogin) onLogin(nurseUser as StaffUser);
   };
 
   const handleSaveLog = (e: React.FormEvent) => {
@@ -275,6 +267,25 @@ export const NursingCarePortalView: React.FC<NursingCarePortalViewProps> = ({
       alert(isUrdu ? 'برائے مہربانی پہلے داخل مریض منتخب کریں!' : 'Please select an admitted patient first!');
       return;
     }
+
+    const sys = Number(newLog.bpSystolic) || 120;
+    const dia = Number(newLog.bpDiastolic) || 80;
+    const pulse = Number(newLog.pulseRate) || 72;
+    const temp = Number(newLog.temperature) || 98.6;
+    const spo2 = Number(newLog.spO2) || 98;
+    const sugar = Number(newLog.bloodSugarRBS) || 120;
+
+    const isCritical =
+      sys >= 150 || sys <= 90 || dia >= 100 || spo2 < 93 || temp >= 101.5 || pulse >= 110 || pulse < 55 || sugar >= 250 || sugar < 65;
+    const isWarning =
+      !isCritical &&
+      (sys >= 140 || dia >= 90 || spo2 < 95 || temp >= 100.4 || pulse >= 100 || pulse < 60 || sugar >= 180 || sugar < 70);
+
+    const computedStatus: 'Normal' | 'Observation Needed' | 'Critical - Doctor Notified' = isCritical
+      ? 'Critical - Doctor Notified'
+      : isWarning
+      ? 'Observation Needed'
+      : (newLog.doctorAlertStatus as any) || 'Normal';
 
     const logEntry: NursingVitalsEntry = {
       id: `NURSE-LOG-${Date.now()}`,
@@ -286,11 +297,11 @@ export const NursingCarePortalView: React.FC<NursingCarePortalViewProps> = ({
       timestamp: new Date().toISOString(),
       timeSlot: newLog.timeSlot || '12:00 PM',
       nurseName: currentUser?.name || 'Staff Nurse Fouzia Parveen',
-      bpSystolic: Number(newLog.bpSystolic) || 120,
-      bpDiastolic: Number(newLog.bpDiastolic) || 80,
-      pulseRate: Number(newLog.pulseRate) || 72,
-      temperature: Number(newLog.temperature) || 98.6,
-      spO2: Number(newLog.spO2) || 98,
+      bpSystolic: sys,
+      bpDiastolic: dia,
+      pulseRate: pulse,
+      temperature: temp,
+      spO2: spo2,
       respiratoryRate: Number(newLog.respiratoryRate) || 18,
       bloodSugarRBS: Number(newLog.bloodSugarRBS) || undefined,
       painScale: Number(newLog.painScale) || 0,
@@ -304,16 +315,34 @@ export const NursingCarePortalView: React.FC<NursingCarePortalViewProps> = ({
       intakeIvMl: Number(newLog.intakeIvMl) || 0,
       outputUrineMl: Number(newLog.outputUrineMl) || 0,
       outputDrainMl: Number(newLog.outputDrainMl) || 0,
-      nursingNotesUrdu: newLog.nursingNotesUrdu || 'وائٹلز معمول کے مطابق ہیں۔',
-      nursingNotesEnglish: newLog.nursingNotesEnglish || 'Vitals recorded within normal limits.',
-      doctorAlertStatus: (newLog.doctorAlertStatus as any) || 'Normal',
+      nursingNotesUrdu: newLog.nursingNotesUrdu || (isCritical ? '⚠️ تشویشناک علامات: ڈاکٹر کو فوری اطلاع دی گئی۔' : 'وائٹلز معمول کے مطابق ہیں۔'),
+      nursingNotesEnglish: newLog.nursingNotesEnglish || (isCritical ? '⚠️ Critical EWS alert: Attending doctor immediately notified.' : 'Vitals recorded within normal limits.'),
+      doctorAlertStatus: computedStatus,
     };
 
     const updated = [logEntry, ...vitalsLogs];
     setVitalsLogs(updated);
     localStorage.setItem('hc_nursing_vitals_logs_v2', JSON.stringify(updated));
 
-    setNotificationMsg(isUrdu ? '✅ ۴ گھنٹے کی نرسنگ وائٹلز و ادویات شیٹ کامیابی سے محفوظ ہو گئی ہے!' : '✅ 4-Hourly nursing vitals & MAR chart successfully logged!');
+    if (isCritical) {
+      setNotificationMsg(
+        isUrdu
+          ? '🚨 انتباہ (EWS Alert): مریض کے وائٹلز تشویشناک ہیں! ڈیوٹی ڈاکٹر کو فوری مطلع کر دیا گیا ہے۔'
+          : '🚨 Early Warning Alert: Critical vitals detected! On-duty medical consultant alerted.'
+      );
+    } else if (isWarning) {
+      setNotificationMsg(
+        isUrdu
+          ? '⚠️ غیر معمولی وائٹلز نوٹ کیے گئے۔ ۲ گھنٹے بعد دوبارہ مانیٹرنگ کی ہدایت۔'
+          : '⚠️ Elevated parameters flagged. Close 2-hourly observation advised.'
+      );
+    } else {
+      setNotificationMsg(
+        isUrdu
+          ? '✅ ۴ گھنٹے کی نرسنگ وائٹلز و ادویات شیٹ کامیابی سے محفوظ ہو گئی ہے!'
+          : '✅ 4-Hourly nursing vitals & MAR chart successfully logged!'
+      );
+    }
     setActiveTab('sheet');
     setTimeout(() => setNotificationMsg(''), 4000);
   };
@@ -487,7 +516,7 @@ export const NursingCarePortalView: React.FC<NursingCarePortalViewProps> = ({
                 value={usernameInput}
                 onChange={(e) => setUsernameInput(e.target.value)}
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                placeholder="nurse1"
+                placeholder={isUrdu ? 'نرس اسٹاف یوزر درج کریں' : 'Enter nurse username'}
                 required
               />
             </div>
@@ -508,22 +537,11 @@ export const NursingCarePortalView: React.FC<NursingCarePortalViewProps> = ({
 
             <button
               type="submit"
-              className="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-3 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer mt-2"
             >
               <Lock className="w-4 h-4" />
               <span>{isUrdu ? 'لاگ ان کریں (Nurse Sign In)' : 'Sign In to Nursing Portal'}</span>
             </button>
-
-            <div className="pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={handleQuickDemoNurseLogin}
-                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-emerald-800 font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Sparkles className="w-4 h-4 text-emerald-600" />
-                <span>{isUrdu ? '⚡ فوری ٹیسٹنگ لاگ ان (Demo Nurse: nurse1)' : '⚡ Auto Fill Demo Nurse (nurse1)'}</span>
-              </button>
-            </div>
           </form>
         </div>
       </div>
@@ -557,6 +575,14 @@ export const NursingCarePortalView: React.FC<NursingCarePortalViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowShiftHandoverModal(true)}
+            className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shadow-xs cursor-pointer"
+          >
+            <FileText className="w-3.5 h-3.5 text-amber-300" />
+            <span>{isUrdu ? '📋 خودکار شفٹ ہینڈ اوور (PDF)' : '📋 Automated Shift Handover (PDF)'}</span>
+          </button>
+
           {onLogout && (
             <button
               onClick={onLogout}
@@ -1088,6 +1114,15 @@ export const NursingCarePortalView: React.FC<NursingCarePortalViewProps> = ({
           </div>
         )}
       </main>
+
+      {/* Automated Shift Handover Modal */}
+      <ShiftHandoverModal
+        isOpen={showShiftHandoverModal}
+        onClose={() => setShowShiftHandoverModal(false)}
+        currentUser={currentUser}
+        clinicSettings={clinicSettings}
+        language={language}
+      />
     </div>
   );
 };

@@ -81,6 +81,11 @@ export const Footer: React.FC<FooterProps> = ({ settings, setActiveView, onOpenA
                 </button>
               </li>
               <li>
+                <button onClick={() => setActiveView('patient-dashboard')} className="hover:text-emerald-400 transition-colors text-amber-300 font-bold">
+                  • {isUrdu ? 'مریض ڈیش بورڈ (Patient Dashboard)' : 'Patient Portal & Dashboard'}
+                </button>
+              </li>
+              <li>
                 <button onClick={() => setActiveView('lab-reports')} className="hover:text-emerald-400 transition-colors">
                   • {isUrdu ? 'آن لائن لیب رپورٹس (Lab Reports)' : 'Lab Reports & QR Verification'}
                 </button>
