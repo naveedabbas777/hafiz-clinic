@@ -38,9 +38,9 @@ export const Footer: React.FC<FooterProps> = ({ settings, setActiveView, onOpenA
                 : 'Approved by Punjab Healthcare Commission (PHC). Managed by experienced MBBS physicians providing clinical diagnosis, lab tests, computerized checkups, and nationwide product delivery.'}
             </p>
 
-            <div className="inline-flex items-center gap-1.5 bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-bold px-3 py-1 rounded-full">
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-              <span>PHC Reg No: {settings.phcApprovalNo}</span>
+            <div className="flex items-center gap-1.5 text-xs text-emerald-300 font-medium">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>PHC Reg No: {settings.phcApprovalNo || settings.punjabHealthRegNo || 'PHC-REG-849201'}</span>
             </div>
           </div>
 

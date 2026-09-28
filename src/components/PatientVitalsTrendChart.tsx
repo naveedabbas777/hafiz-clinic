@@ -58,6 +58,8 @@ interface PatientVitalsTrendChartProps {
   showSelfLogOption?: boolean;
 }
 
+export { HealthTrends } from './HealthTrends';
+
 export const PatientVitalsTrendChart: React.FC<PatientVitalsTrendChartProps> = ({
   patientMrn = 'MRN-84920',
   patientName = 'محمد فاروق / Muhammad Farooq',

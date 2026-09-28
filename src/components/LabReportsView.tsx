@@ -48,7 +48,73 @@ export const LabReportsView: React.FC<LabReportsViewProps> = ({ language = 'engl
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setSearched(true);
-    const found = mockDatabase[mrnInput.trim().toUpperCase()] || null;
+    const searchMrn = mrnInput.trim().toUpperCase();
+    const searchPhoneDigits = phoneInput.replace(/\D/g, '');
+
+    // 1. Check dynamic synced patient reports
+    try {
+      const syncedReports: any[] = JSON.parse(localStorage.getItem('hafiz_patient_reports_v2') || '[]');
+      const matchedSync = syncedReports.find((r) => {
+        const rMrn = (r.mrn || r._id || '').toUpperCase();
+        const rPhone = (r.phone || '').replace(/\D/g, '');
+        return (
+          (searchMrn && rMrn.includes(searchMrn)) ||
+          (searchPhoneDigits && rPhone.includes(searchPhoneDigits))
+        );
+      });
+
+      if (matchedSync) {
+        setSearchResult({
+          patientName: matchedSync.patientName,
+          mrn: matchedSync.mrn || matchedSync._id || searchMrn,
+          ageGender: 'Adult',
+          sampleDate: matchedSync.date || new Date().toISOString().split('T')[0],
+          reportDate: matchedSync.date || new Date().toISOString().split('T')[0],
+          doctor: matchedSync.approvedBy || 'Dr. Saima Rehman (Pathologist)',
+          qrCodeVal: matchedSync.qrVerificationCode || `HAFIZ-VERIFIED-${matchedSync._id || 'OK'}`,
+          tests: (matchedSync.parameters || []).map((p: any) => ({
+            testName: p.name,
+            result: p.value || 'Normal',
+            refRange: p.normalRange || 'Standard',
+            status: p.isAbnormal ? '⚠️ Attention Needed (Abnormal)' : 'Normal / Passed',
+          })),
+        });
+        return;
+      }
+
+      // 2. Check lab orders table
+      const labOrders: any[] = JSON.parse(localStorage.getItem('hafiz_lab_orders_v2') || '[]');
+      const matchedOrder = labOrders.find((o) => {
+        const oNum = (o.orderNumber || o.id || '').toUpperCase();
+        const oPhone = (o.patientPhone || '').replace(/\D/g, '');
+        return (
+          (searchMrn && (oNum.includes(searchMrn) || searchMrn.includes(oNum))) ||
+          (searchPhoneDigits && oPhone.includes(searchPhoneDigits))
+        );
+      });
+
+      if (matchedOrder) {
+        setSearchResult({
+          patientName: matchedOrder.patientName,
+          mrn: matchedOrder.orderNumber,
+          ageGender: `${matchedOrder.patientAge || '—'} / ${matchedOrder.patientGender || 'Adult'}`,
+          sampleDate: matchedOrder.testDate || new Date().toISOString().split('T')[0],
+          reportDate: matchedOrder.deliveryDate || new Date().toISOString().split('T')[0],
+          doctor: matchedOrder.approvedByPathologist || matchedOrder.referredByDoctor || 'Consultant Pathologist',
+          qrCodeVal: `HAFIZ-LAB-VERIFIED-${matchedOrder.orderNumber}-PHC`,
+          tests: (matchedOrder.parameters || []).map((p: any) => ({
+            testName: p.name,
+            result: p.value || 'Report Ready',
+            refRange: p.normalRange || 'Standard',
+            status: p.isAbnormal ? '⚠️ Attention Needed' : 'Normal',
+          })),
+        });
+        return;
+      }
+    } catch (_) {}
+
+    // 3. Fallback to mock catalog database
+    const found = mockDatabase[searchMrn] || null;
     setSearchResult(found);
   };
 

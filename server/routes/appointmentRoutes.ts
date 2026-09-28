@@ -4,6 +4,8 @@ import { Appointment } from '../models/Appointment';
 import { User } from '../models/User';
 import { MoneySlip } from '../models/MoneySlip';
 import { getMongoConnectedStatus } from '../config/db';
+import { sendPrescriptionCompletedEmail } from '../services/emailService';
+import { resolvePatientEmail } from './emailRoutes';
 
 const router = Router();
 
@@ -87,6 +89,43 @@ async function autoCreateAppointmentSlip(appt: any) {
     }
   } catch (e) {
     // Non-blocking background slip creation
+  }
+}
+
+// Auto dispatch prescription summary email when consultation is completed
+async function triggerPrescriptionEmailIfCompleted(appt: any, emailOverride?: string, rxDetails?: any) {
+  try {
+    if (appt?.status !== 'Completed') return;
+
+    const targetEmail =
+      emailOverride ||
+      appt.email ||
+      appt.patientEmail ||
+      (await resolvePatientEmail({
+        phone: appt.phone,
+        patientName: appt.patientName,
+        mrn: appt.mrnNumber || appt.patientId,
+      }));
+
+    if (targetEmail) {
+      console.log(`[Auto-Email] Dispatching completed prescription summary to: ${targetEmail}`);
+      sendPrescriptionCompletedEmail({
+        recipientEmail: targetEmail,
+        patientName: appt.patientName,
+        doctorName: appt.doctorName,
+        prescriptionData: rxDetails || {
+          rxNumber: `RX-${appt.id || 'OPD'}`,
+          patientName: appt.patientName,
+          patientPhone: appt.phone,
+          doctorName: appt.doctorName,
+          problem: appt.problem,
+          date: appt.date || new Date().toISOString().split('T')[0],
+          medicines: appt.medicines || [],
+        },
+      }).catch((err) => console.error('[Auto-Email Error] Prescription dispatch error:', err));
+    }
+  } catch (e) {
+    console.error('Error triggering prescription email:', e);
   }
 }
 
@@ -219,6 +258,10 @@ router.put('/:id', async (req: Request, res: Response) => {
       if (updatedAppt && (req.body.status === 'Approved' || updatedAppt.status === 'Approved')) {
         await autoCreateAppointmentSlip(updatedAppt);
       }
+
+      if (updatedAppt && (req.body.status === 'Completed' || updatedAppt.status === 'Completed')) {
+        triggerPrescriptionEmailIfCompleted(updatedAppt, req.body.email || req.body.patientEmail, req.body.prescription);
+      }
     }
 
     const index = inMemoryAppointments.findIndex((a) => a.id === id || (a._id && String(a._id) === id));
@@ -228,6 +271,10 @@ router.put('/:id', async (req: Request, res: Response) => {
     } else {
       inMemoryAppointments.unshift({ id, ...req.body });
       if (!updatedAppt) updatedAppt = { id, ...req.body };
+    }
+
+    if (updatedAppt && (req.body.status === 'Completed' || updatedAppt.status === 'Completed')) {
+      triggerPrescriptionEmailIfCompleted(updatedAppt, req.body.email || req.body.patientEmail, req.body.prescription);
     }
 
     return res.json({ success: true, appointment: updatedAppt });

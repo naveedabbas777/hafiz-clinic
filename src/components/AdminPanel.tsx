@@ -4,14 +4,19 @@ import { Database, Plus, Trash2, Edit, Save, RefreshCw, ShieldCheck, ShoppingCar
 import { loginApi, uploadDoctorImageApi, uploadDiseaseImageApi, uploadProductImageApi, uploadProductVideoApi, createProductApi, deleteProductApi, createDoctorApi, deleteDoctorApi, createDiseaseApi, deleteDiseaseApi, checkDbStatusApi, updateDoctorApi, getUsersApi, getMessagesApi, getReportsApi, fileToBase64, deleteReportApi, deleteUserApi } from '../services/api';
 import { fetchSlipsApi, saveSlipApi, deleteSlipApi, createAutoInvoiceFromAppointment, addItemToPatientInvoice, HOSPITAL_SERVICES_CATALOG } from '../services/billingService';
 import { printInvoiceHtml, printEODAuditReport, downloadInvoicePdf, printInvoicePdf, EODAuditData } from '../utils/printInvoice';
-import { openWhatsAppNotification } from '../utils/notificationDispatcher';
-import { DoctorPatientChatView } from './DoctorPatientChatView';
-import { SmartPharmacyPosView } from './SmartPharmacyPosView';
-import { PathologyLabView } from './PathologyLabView';
-import { ShiftAccountsView } from './ShiftAccountsView';
-import { OpdQueueScreenView } from './OpdQueueScreenView';
-import { IpdWardManagementView } from './IpdWardManagementView';
+import { openWhatsAppNotification, sendPendingAppointmentWhatsApp, generatePendingAppointmentWhatsAppTemplate } from '../utils/notificationDispatcher';
+import { LoadingFallback } from './LoadingFallback';
 import { getLocalStaffUsers, saveLocalStaffUsers, HOSPITAL_RBAC_RULES, RBACRuleDefinition } from '../data/staffData';
+import { AdminGlobalSearchModal } from './AdminGlobalSearchModal';
+
+// Code-split heavy clinical views to prevent bloat in Admin bundle
+const DoctorPatientChatView = React.lazy(() => import('./DoctorPatientChatView').then((m) => ({ default: m.DoctorPatientChatView })));
+const SmartPharmacyPosView = React.lazy(() => import('./SmartPharmacyPosView').then((m) => ({ default: m.SmartPharmacyPosView })));
+const PathologyLabView = React.lazy(() => import('./PathologyLabView').then((m) => ({ default: m.PathologyLabView })));
+const ShiftAccountsView = React.lazy(() => import('./ShiftAccountsView').then((m) => ({ default: m.ShiftAccountsView })));
+const OpdQueueScreenView = React.lazy(() => import('./OpdQueueScreenView').then((m) => ({ default: m.OpdQueueScreenView })));
+const IpdWardManagementView = React.lazy(() => import('./IpdWardManagementView').then((m) => ({ default: m.IpdWardManagementView })));
+const AdminFinancialSummary = React.lazy(() => import('./AdminFinancialSummary').then((m) => ({ default: m.AdminFinancialSummary })));
 
 interface AdminPanelProps {
   doctors: Doctor[];
@@ -171,6 +176,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   useEffect(() => {
     localStorage.setItem('hafiz_hospital_money_slips', JSON.stringify(slipsList));
   }, [slipsList]);
+
+  // Global Cross-System Search State & Keyboard Shortcut
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Toggle search on Ctrl + K or Cmd + K
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsGlobalSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Money Slips Controls State
   const [slipSearch, setSlipSearch] = useState<string>('');
@@ -676,6 +696,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [bookStatus, setBookStatus] = useState<'Approved' | 'Pending'>('Approved');
   const [isSubmittingBook, setIsSubmittingBook] = useState<boolean>(false);
   const [appointmentSearch, setAppointmentSearch] = useState<string>('');
+  const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<'All' | 'Pending' | 'Approved' | 'Completed' | 'Cancelled'>('All');
+  const [whatsAppModalApp, setWhatsAppModalApp] = useState<Appointment | null>(null);
+  const [whatsAppModalLang, setWhatsAppModalLang] = useState<'urdu' | 'english'>('urdu');
+  const [copiedTemplate, setCopiedTemplate] = useState<boolean>(false);
 
   // Register Patient Account Modal State
   const [isRegPatientModalOpen, setIsRegPatientModalOpen] = useState<boolean>(false);
@@ -1601,6 +1625,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
 
           <div className="flex items-center gap-2 text-xs flex-wrap">
+            {/* Global System Search Trigger */}
+            <button
+              type="button"
+              onClick={() => setIsGlobalSearchOpen(true)}
+              className="bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white px-3.5 py-2 rounded-xl border border-slate-700 flex items-center gap-2 transition-all shadow-inner group cursor-pointer"
+              title={isUrdu ? 'گلوبل سرچ (مریض، اپائنٹمنٹ، ادویات) - Ctrl + K' : 'Global Search (Patients, Appointments, Medicines, Invoices) - Ctrl + K'}
+            >
+              <Search className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+              <span className="hidden sm:inline font-bold text-xs">
+                {isUrdu ? 'فوری تلاش کریں...' : 'Search Patients, IDs, Rx...'}
+              </span>
+              <kbd className="hidden md:inline text-[10px] font-mono bg-slate-800 text-emerald-400 border border-slate-700 px-1.5 py-0.5 rounded ml-1 font-bold">
+                Ctrl+K
+              </kbd>
+            </button>
+
             {setActiveView && (
               <button
                 type="button"
@@ -1670,6 +1710,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         <div className="flex bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm overflow-x-auto text-xs font-bold gap-1">
           {[
             { id: 'overview', label: isUrdu ? '📊 ڈیش بورڈ' : '📊 Dashboard & Analytics' },
+            { id: 'financial_health', label: isUrdu ? '📈 مالیاتی صحت و شفٹ سمری' : '📈 Financial Health' },
             { id: 'ipd_ward', label: isUrdu ? '🏥 داخل مریض و وارڈ (IPD)' : '🏥 IPD & Ward Management' },
             { id: 'pharmacy_pos', label: isUrdu ? '💊 فارمیسی و POS کاؤنٹر' : '💊 Pharmacy POS & Batches' },
             { id: 'pathology_lab', label: isUrdu ? '🔬 پیتھالوجی و لیب ٹیسٹ' : '🔬 Pathology Lab & Tests' },
@@ -1701,60 +1742,88 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           ))}
         </div>
 
+        {/* Visual Financial Summary & Shift Health Tab */}
+        {activeTab === 'financial_health' && (
+          <div className="space-y-6">
+            <React.Suspense fallback={<LoadingFallback isUrdu={isUrdu} />}>
+              <AdminFinancialSummary
+                slips={slipsList}
+                appointments={appointments}
+                doctors={doctors}
+                expenses={expensesList}
+                language={language}
+                onUpdateSlip={(updated) =>
+                  setSlipsList(slipsList.map((s) => (s.id === updated.id ? updated : s)))
+                }
+              />
+            </React.Suspense>
+          </div>
+        )}
+
         {/* IPD & Ward Management Tab */}
         {activeTab === 'ipd_ward' && (
           <div className="space-y-6">
-            <IpdWardManagementView
-              doctors={doctors}
-              language={isUrdu ? 'urdu' : 'english'}
-              clinicSettings={settings}
-            />
+            <React.Suspense fallback={<LoadingFallback isUrdu={isUrdu} />}>
+              <IpdWardManagementView
+                doctors={doctors}
+                language={isUrdu ? 'urdu' : 'english'}
+                clinicSettings={settings}
+              />
+            </React.Suspense>
           </div>
         )}
 
         {/* 1. Smart Pharmacy POS & Batch Inventory Tab */}
         {activeTab === 'pharmacy_pos' && (
           <div className="space-y-6">
-            <SmartPharmacyPosView
-              products={products}
-              language={isUrdu ? 'urdu' : 'english'}
-              clinicSettings={settings}
-            />
+            <React.Suspense fallback={<LoadingFallback isUrdu={isUrdu} />}>
+              <SmartPharmacyPosView
+                products={products}
+                language={isUrdu ? 'urdu' : 'english'}
+                clinicSettings={settings}
+              />
+            </React.Suspense>
           </div>
         )}
 
         {/* 2. Pathology & Diagnostic Lab Tab */}
         {activeTab === 'pathology_lab' && (
           <div className="space-y-6">
-            <PathologyLabView
-              language={isUrdu ? 'urdu' : 'english'}
-              clinicSettings={settings}
-            />
+            <React.Suspense fallback={<LoadingFallback isUrdu={isUrdu} />}>
+              <PathologyLabView
+                language={isUrdu ? 'urdu' : 'english'}
+                clinicSettings={settings}
+              />
+            </React.Suspense>
           </div>
         )}
 
         {/* 3. Financial Shift Closing & Doctor Revenue Share Tab */}
         {activeTab === 'shift_accounts' && (
           <div className="space-y-6">
-            <ShiftAccountsView
-              doctors={doctors}
-              slips={slipsList}
-              expenses={expensesList}
-              language={isUrdu ? 'urdu' : 'english'}
-              clinicSettings={settings}
-            />
+            <React.Suspense fallback={<LoadingFallback isUrdu={isUrdu} />}>
+              <ShiftAccountsView
+                doctors={doctors}
+                slips={slipsList}
+                expenses={expensesList}
+                language={isUrdu ? 'urdu' : 'english'}
+                clinicSettings={settings}
+              />
+            </React.Suspense>
           </div>
         )}
 
         {/* 4. OPD Waiting Room TV Screen Tab */}
         {activeTab === 'opd_queue' && (
           <div className="space-y-6">
-            <OpdQueueScreenView
-              doctors={doctors}
-              language={isUrdu ? 'urdu' : 'english'}
-              clinicSettings={settings}
-              onBackToApp={() => setActiveTab('overview')}
-            />
+            <React.Suspense fallback={<LoadingFallback isUrdu={isUrdu} />}>
+              <OpdQueueScreenView
+                doctors={doctors}
+                language={isUrdu ? 'urdu' : 'english'}
+                clinicSettings={settings}
+                onBackToApp={() => setActiveTab('overview')}
+              />
+            </React.Suspense>
           </div>
         )}
 
@@ -3212,11 +3281,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </span>
                   </div>
 
-                  <DoctorPatientChatView
-                    currentUser={{ role: 'doctor', id: 'admin-monitor', name: isUrdu ? 'ایڈمن کنٹرول مانیٹر' : 'Admin Telemedicine Inspector' }}
-                    doctors={doctors}
-                    language={language}
-                  />
+                  <React.Suspense fallback={<LoadingFallback isUrdu={isUrdu} />}>
+                    <DoctorPatientChatView
+                      currentUser={{ role: 'doctor', id: 'admin-monitor', name: isUrdu ? 'ایڈمن کنٹرول مانیٹر' : 'Admin Telemedicine Inspector' }}
+                      doctors={doctors}
+                      language={language}
+                    />
+                  </React.Suspense>
 
                   {/* Summary of Hospital Messages */}
                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
@@ -3302,6 +3373,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="space-y-6 text-slate-900">
+            {/* Real-time Visual Financial Health & Shift Operations Summary */}
+            <React.Suspense fallback={<LoadingFallback isUrdu={isUrdu} />}>
+              <AdminFinancialSummary
+                slips={slipsList}
+                appointments={appointments}
+                doctors={doctors}
+                expenses={expensesList}
+                language={language}
+                onUpdateSlip={(updated) =>
+                  setSlipsList(slipsList.map((s) => (s.id === updated.id ? updated : s)))
+                }
+              />
+            </React.Suspense>
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
                 <div className="text-xs text-slate-500 font-bold">
@@ -4384,6 +4469,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             </div>
 
+            {/* Status Filter Tabs */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 pb-1 border-b border-slate-100">
+              {[
+                { id: 'All', label: isUrdu ? `تمام اپائنٹمنٹس (${appointments.length})` : `All (${appointments.length})` },
+                { id: 'Pending', label: isUrdu ? `معلق / غیر منظور شدہ (${appointments.filter(a => a.status === 'Pending').length})` : `Pending Review (${appointments.filter(a => a.status === 'Pending').length})` },
+                { id: 'Approved', label: isUrdu ? `منظور شدہ (${appointments.filter(a => a.status === 'Approved').length})` : `Approved (${appointments.filter(a => a.status === 'Approved').length})` },
+                { id: 'Completed', label: isUrdu ? `مکمل (${appointments.filter(a => a.status === 'Completed').length})` : `Completed (${appointments.filter(a => a.status === 'Completed').length})` },
+                { id: 'Cancelled', label: isUrdu ? `منسوخ (${appointments.filter(a => a.status === 'Cancelled').length})` : `Cancelled (${appointments.filter(a => a.status === 'Cancelled').length})` },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setAppointmentStatusFilter(tab.id as any)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    appointmentStatusFilter === tab.id
+                      ? tab.id === 'Pending'
+                        ? 'bg-amber-600 text-white shadow-sm'
+                        : 'bg-emerald-800 text-white shadow-sm'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
             <div className="overflow-x-auto text-xs">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -4402,6 +4513,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <tbody>
                   {appointments
                     .filter((app) => {
+                      if (appointmentStatusFilter !== 'All' && app.status !== appointmentStatusFilter) {
+                        return false;
+                      }
                       if (!appointmentSearch.trim()) return true;
                       const q = appointmentSearch.toLowerCase();
                       return (
@@ -4522,22 +4636,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <button
                               type="button"
                               onClick={() => {
-                                openWhatsAppNotification({
-                                  type: 'appointment_confirm',
-                                  recipientPhone: app.phone,
-                                  patientName: app.patientName,
-                                  doctorName: app.doctorName,
-                                  appointmentDate: app.date,
-                                  timeSlot: app.timeSlot,
-                                  tokenNumber: app.tokenNumber || (app as any).token || (app.id && app.id.startsWith('APP-') ? app.id.replace('APP-', '') : 'OPD-1'),
-                                  isUrdu: isUrdu,
-                                });
+                                setWhatsAppModalApp(app);
+                                setWhatsAppModalLang(isUrdu ? 'urdu' : 'english');
                               }}
-                              className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer shadow-xs flex items-center gap-0.5"
-                              title={isUrdu ? 'مریض کے واٹس ایپ پر ٹوکن بھیجیں' : 'Send WhatsApp Confirmation'}
+                              className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer shadow-xs flex items-center gap-1"
+                              title={isUrdu ? 'مریض کو واٹس ایپ پر ٹیمپلیٹ میسج بھیجیں' : 'Send automated message via WhatsApp'}
                             >
-                              <MessageCircle className="w-3 h-3 text-emerald-100" />
-                              <span>WA</span>
+                              <MessageCircle className="w-3.5 h-3.5 text-emerald-100" />
+                              <span>{isUrdu ? 'واٹس ایپ بھیجیں' : 'Send via WhatsApp'}</span>
                             </button>
                             <button
                               type="button"
@@ -5369,6 +5475,176 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   <span>{isUrdu ? 'تمام ویڈیو سیٹنگز محفوظ کریں' : 'Save All Video Settings'}</span>
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Automated WhatsApp Message Template Generator & Dispatcher */}
+        {whatsAppModalApp && (
+          <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto" dir={isUrdu ? 'rtl' : 'ltr'}>
+            <div className="bg-white border border-slate-200 w-full max-w-xl rounded-3xl p-6 text-slate-900 space-y-5 shadow-2xl relative animate-fadeIn">
+              <button
+                type="button"
+                onClick={() => setWhatsAppModalApp(null)}
+                className="absolute top-5 left-5 rtl:left-auto rtl:right-5 text-slate-400 hover:text-slate-700 p-2 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex items-center gap-3 border-b border-slate-200 pb-4">
+                <div className="w-12 h-12 bg-emerald-600 text-white rounded-2xl flex items-center justify-center font-bold shadow-md shadow-emerald-900/20 shrink-0">
+                  <MessageCircle className="w-7 h-7 text-white" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-lg text-emerald-950">
+                      {isUrdu ? 'خودکار واٹس ایپ میسج ٹیمپلیٹ' : 'Automated WhatsApp Message Template'}
+                    </h3>
+                    <span className="text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-300 font-bold px-2 py-0.5 rounded-full">
+                      WhatsApp Dispatcher
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {isUrdu
+                      ? 'مریض کے نام، معالج اور تاریخ و وقت پر مشتمل خودکار پیغام'
+                      : 'Auto-formatted notification containing patient name, doctor, and date/time'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Patient & Appointment Quick Meta Details */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-xs">
+                <div>
+                  <span className="text-slate-400 block text-[10px] font-bold">{isUrdu ? 'مریض کا نام' : 'Patient Name'}</span>
+                  <strong className="text-slate-900 block truncate">{whatsAppModalApp.patientName}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] font-bold">{isUrdu ? 'موبائل نمبر' : 'Mobile Phone'}</span>
+                  <strong className="font-mono text-emerald-800">{whatsAppModalApp.phone}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] font-bold">{isUrdu ? 'موجودہ حالت' : 'Status'}</span>
+                  <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                    whatsAppModalApp.status === 'Approved'
+                      ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                      : whatsAppModalApp.status === 'Completed'
+                      ? 'bg-blue-100 text-blue-900 border border-blue-300'
+                      : whatsAppModalApp.status === 'Cancelled'
+                      ? 'bg-rose-100 text-rose-900 border border-rose-300'
+                      : 'bg-amber-100 text-amber-900 border border-amber-300'
+                  }`}>
+                    {whatsAppModalApp.status === 'Pending' ? (isUrdu ? 'معلق (Pending)' : 'Pending') : whatsAppModalApp.status}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] font-bold">{isUrdu ? 'تعینات معالج' : 'Assigned Doctor'}</span>
+                  <span className="text-slate-800 font-semibold truncate block">{whatsAppModalApp.doctorName || 'ڈاکٹر زیشان چوہدری'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] font-bold">{isUrdu ? 'تاریخ و وقت' : 'Date & Time'}</span>
+                  <span className="text-slate-800 font-mono text-[11px] block">{whatsAppModalApp.date} | {whatsAppModalApp.timeSlot}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] font-bold">{isUrdu ? 'ٹوکن کوڈ' : 'Token ID'}</span>
+                  <span className="font-mono text-amber-800 font-bold">
+                    #{whatsAppModalApp.tokenNumber || (whatsAppModalApp.id && whatsAppModalApp.id.startsWith('APP-') ? whatsAppModalApp.id.replace('APP-', '') : '101')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Language Selection & Template Mode */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-bold text-slate-700">
+                  {isUrdu ? 'ٹیمپلیٹ زبان کا انتخاب:' : 'Select Template Language:'}
+                </span>
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+                  <button
+                    type="button"
+                    onClick={() => setWhatsAppModalLang('urdu')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      whatsAppModalLang === 'urdu'
+                        ? 'bg-emerald-700 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    اردو (Urdu)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWhatsAppModalLang('english')}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      whatsAppModalLang === 'english'
+                        ? 'bg-emerald-700 text-white shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    English
+                  </button>
+                </div>
+              </div>
+
+              {/* Template Text Preview Area */}
+              {(() => {
+                const isUrduLang = whatsAppModalLang === 'urdu';
+                const template = generatePendingAppointmentWhatsAppTemplate(whatsAppModalApp, isUrduLang);
+                const messageText = isUrduLang ? template.urdu : template.english;
+
+                return (
+                  <div className="space-y-3">
+                    <div className="relative bg-slate-900 text-slate-100 rounded-2xl p-4 text-xs font-mono leading-relaxed border border-slate-800 max-h-56 overflow-y-auto whitespace-pre-wrap select-all">
+                      <div className="absolute top-2 right-2 rtl:right-auto rtl:left-2 bg-slate-800 text-slate-300 text-[10px] px-2 py-0.5 rounded font-sans font-bold">
+                        {whatsAppModalApp.status === 'Pending' ? 'Pending Template' : 'Appointment Template'}
+                      </div>
+                      <div dir={isUrduLang ? 'rtl' : 'ltr'}>{messageText}</div>
+                    </div>
+
+                    {/* Action Bar */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(messageText);
+                          setCopiedTemplate(true);
+                          setTimeout(() => setCopiedTemplate(false), 2500);
+                        }}
+                        className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-800 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer border border-slate-200"
+                      >
+                        {copiedTemplate ? (
+                          <>
+                            <Check className="w-4 h-4 text-emerald-600" />
+                            <span className="text-emerald-700">{isUrdu ? 'کاپی ہو گیا!' : 'Copied!'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <FileText className="w-4 h-4 text-slate-600" />
+                            <span>{isUrdu ? 'ٹیکسٹ کاپی کریں' : 'Copy Message'}</span>
+                          </>
+                        )}
+                      </button>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setWhatsAppModalApp(null)}
+                          className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                        >
+                          {isUrdu ? 'بند کریں' : 'Close'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            sendPendingAppointmentWhatsApp(whatsAppModalApp, isUrduLang);
+                          }}
+                          className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-900/20 transition-all cursor-pointer"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                          <span>{isUrdu ? 'واٹس ایپ پر بھیجیں' : 'Send via WhatsApp'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -6915,6 +7191,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
         )}
+
+        {/* Global System-Wide Search Modal Component (Patients, Appointments, Medicines, Invoices) */}
+        <AdminGlobalSearchModal
+          isOpen={isGlobalSearchOpen}
+          onClose={() => setIsGlobalSearchOpen(false)}
+          isUrdu={isUrdu}
+          appointments={appointments}
+          products={products}
+          slips={slipsList}
+          users={usersList}
+          onNavigateTab={(targetTab, filterParam) => {
+            setActiveTab(targetTab as any);
+            if (targetTab === 'appointments' && filterParam) {
+              setAppointmentSearch(filterParam);
+            } else if (targetTab === 'slips' && filterParam) {
+              setSlipSearch(filterParam);
+            }
+          }}
+          onSelectSlip={(slip) => {
+            setSelectedSlipForPrint(slip);
+          }}
+        />
 
       </div>
     </div>

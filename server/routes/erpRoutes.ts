@@ -399,6 +399,41 @@ router.put('/pharmacy-batches/:id', (req: Request, res: Response) => {
   res.json({ success: true, message: 'Batch updated successfully', data: inMemoryBatches[idx] });
 });
 
+// POST process pharmacy sale with real-time stock deduction and low-stock check
+router.post('/pharmacy-sale', (req: Request, res: Response) => {
+  const { items, totalAmount, paymentMethod, customerName, slipNo } = req.body;
+  const lowStockAlerts: string[] = [];
+
+  if (Array.isArray(items)) {
+    for (const item of items) {
+      const bIdx = inMemoryBatches.findIndex(
+        (b) => b.id === item.batchId || b.id === item.id || b.batchNumber === item.batchNumber
+      );
+      if (bIdx !== -1) {
+        const qty = Number(item.quantity) || 1;
+        inMemoryBatches[bIdx].currentStock = Math.max(0, (inMemoryBatches[bIdx].currentStock || 0) - qty);
+        if (inMemoryBatches[bIdx].currentStock < (inMemoryBatches[bIdx].minThreshold || 10)) {
+          lowStockAlerts.push(
+            `Low Stock Warning: ${inMemoryBatches[bIdx].productNameUrdu || inMemoryBatches[bIdx].productNameEnglish} has ${inMemoryBatches[bIdx].currentStock} units remaining.`
+          );
+        }
+      }
+    }
+  }
+
+  res.json({
+    success: true,
+    message: 'Pharmacy sale processed and inventory updated',
+    slipNo: slipNo || `PHARM-${Date.now()}`,
+    totalAmount,
+    paymentMethod,
+    customerName,
+    lowStockAlerts,
+    updatedBatchesCount: inMemoryBatches.length,
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // ==================== SHIFT ACCOUNTS ENDPOINTS ====================
 
 // GET all financial shifts

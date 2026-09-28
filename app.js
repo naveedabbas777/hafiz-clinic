@@ -1,13 +1,14 @@
-/**
- * Namecheap cPanel / Phusion Passenger Entry Point
- *
- * Namecheap's "Setup Node.js App" defaults to looking for 'app.js' in the application root.
- * This runner sets production environment and loads the compiled bundle in 'dist/server.cjs'.
- */
+// ==============================================================================
+// Namecheap cPanel CloudLinux Node.js Startup File (app.js)
+// Hafiz Clinic & Healthcare System
+// ==============================================================================
 
-require('dotenv').config();
+process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 
-process.env.NODE_ENV = 'production';
-
-// Import the bundled production Express server
-require('./dist/server.cjs');
+// Load compiled backend bundle
+try {
+  require('./dist/server.cjs');
+} catch (err) {
+  console.error('Failed to start Hafiz Clinic server on Namecheap cPanel:', err);
+  process.exit(1);
+}

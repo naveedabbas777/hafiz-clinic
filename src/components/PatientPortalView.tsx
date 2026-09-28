@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { User, FileText, Download, Calendar, ShieldCheck, CheckCircle2, Lock, UserPlus, LogIn, ShoppingBag, MessageSquare, Upload, Save, Edit, Phone, Mail, MapPin, Loader2, Printer, X, QrCode, Receipt, DollarSign, ExternalLink, Trash2 } from 'lucide-react';
+import { User, FileText, Download, Calendar, ShieldCheck, CheckCircle2, Lock, UserPlus, LogIn, ShoppingBag, MessageSquare, Upload, Save, Edit, Phone, Mail, MapPin, Loader2, Printer, X, QrCode, Receipt, DollarSign, ExternalLink, Trash2, Activity, Heart, TrendingUp, Droplets } from 'lucide-react';
 import { loginApi, registerApi, createReportApi, uploadDiseaseImageApi, updateUserApi, getReportsApi, deleteReportApi } from '../services/api';
 import { fetchSlipsApi } from '../services/billingService';
 import { printInvoiceHtml, printLabReportHtml, downloadInvoicePdf, downloadLabReportPdf, printInvoicePdf } from '../utils/printInvoice';
 import { DoctorPatientChatView } from './DoctorPatientChatView';
 import { Doctor, MoneySlip } from '../types';
+
+// Lazy-loaded visual vital signs trend chart component (Blood Pressure, Glucose, Pulse via Recharts)
+const PatientVitalsTrendChart = React.lazy(() =>
+  import('./PatientVitalsTrendChart').then((m) => ({ default: m.PatientVitalsTrendChart }))
+);
 
 interface PatientPortalViewProps {
   currentUser?: any;
@@ -31,7 +36,7 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({
 }) => {
   const isUrdu = language === 'urdu';
   const [activeMode, setActiveMode] = useState<'login' | 'register'>('login');
-  const [portalTab, setPortalTab] = useState<'chat' | 'appointments' | 'invoices' | 'reports' | 'profile'>('chat');
+  const [portalTab, setPortalTab] = useState<'vitals' | 'chat' | 'appointments' | 'invoices' | 'reports' | 'profile'>('vitals');
 
   // Auth Inputs
   const [username, setUsername] = useState('');
@@ -368,6 +373,18 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({
             {/* Navigation Tabs for Patient Portal */}
             <div className="flex bg-slate-200 p-1.5 rounded-2xl text-xs font-black shadow-inner overflow-x-auto">
               <button
+                onClick={() => setPortalTab('vitals')}
+                className={`flex-1 min-w-[130px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition-all ${
+                  portalTab === 'vitals'
+                    ? 'bg-emerald-700 text-white shadow-lg scale-[1.01]'
+                    : 'text-slate-700 hover:text-slate-900 hover:bg-slate-300'
+                }`}
+              >
+                <Activity className="w-4 h-4 text-amber-300" />
+                <span>{isUrdu ? 'وائٹلز ٹرینڈز (BP و شوگر)' : 'Vital Trends (BP & Sugar)'}</span>
+              </button>
+
+              <button
                 onClick={() => setPortalTab('chat')}
                 className={`flex-1 min-w-[120px] py-2.5 px-3 rounded-xl flex items-center justify-center gap-2 transition-all ${
                   portalTab === 'chat'
@@ -460,6 +477,26 @@ export const PatientPortalView: React.FC<PatientPortalViewProps> = ({
                 </div>
               </button>
             </div>
+
+            {/* TAB CONTENT: 0. HISTORICAL VITAL TRENDS (RECHARTS BLOOD PRESSURE, GLUCOSE, PULSE) */}
+            {portalTab === 'vitals' && (
+              <div className="space-y-6">
+                <React.Suspense
+                  fallback={
+                    <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 shadow-sm text-slate-500 font-bold">
+                      {isUrdu ? 'وائٹل سائنز ٹرینڈ چارٹ لوڈ ہو رہا ہے...' : 'Loading Vital Trends Chart...'}
+                    </div>
+                  }
+                >
+                  <PatientVitalsTrendChart
+                    patientMrn={currentUser?.mrn || 'MRN-84920'}
+                    patientName={currentUser?.fullName || currentUser?.name || (isUrdu ? 'محمد فاروق / Muhammad Farooq' : 'Muhammad Farooq')}
+                    language={language}
+                    showSelfLogOption={true}
+                  />
+                </React.Suspense>
+              </div>
+            )}
 
             {/* TAB CONTENT: 1. CHAT WITH DOCTOR */}
             {portalTab === 'chat' && (

@@ -45,8 +45,10 @@ import {
 import { Doctor, Appointment, ClinicSettings, FollowUpReminder, DigitalMedicalReport } from '../types';
 import { loginApi, registerApi, getReportsApi, uploadDiseaseImageApi } from '../services/api';
 import { downloadLabReportPdf, printLabReportHtml, renderHtmlToPdf } from '../utils/printInvoice';
-import { Telehealth } from './Telehealth';
-import { PatientVitalsTrendChart } from './PatientVitalsTrendChart';
+
+// Lazy-loaded heavy modules (Recharts health analytics & WebRTC consultation)
+const HealthTrends = React.lazy(() => import('./HealthTrends').then((m) => ({ default: m.HealthTrends })));
+const Telehealth = React.lazy(() => import('./Telehealth').then((m) => ({ default: m.Telehealth })));
 
 interface PatientDashboardViewProps {
   currentUser?: any;
@@ -1055,9 +1057,9 @@ export const PatientDashboardView: React.FC<PatientDashboardViewProps> = ({
             }`}
           >
             <HeartPulse className="w-4 h-4 text-rose-300" />
-            <span>{isUrdu ? 'وائٹلز ٹرینڈ چارٹ' : 'Vital Signs Trends'}</span>
+            <span>{isUrdu ? 'صحت کے رجحانات (Health Trends)' : 'Health Trends'}</span>
             <span className="bg-emerald-900 text-white text-[10px] font-mono px-2 py-0.5 rounded-full">
-              Recharts
+              30 Days
             </span>
           </button>
         </div>
@@ -1234,13 +1236,15 @@ export const PatientDashboardView: React.FC<PatientDashboardViewProps> = ({
               </div>
             </div>
 
-            {/* Row 3: Live Recharts Vital Signs Trend Analysis */}
-            <PatientVitalsTrendChart
-              patientMrn={patientMrn}
-              patientName={patientDisplayName}
-              language={language}
-              showSelfLogOption={true}
-            />
+            {/* Row 3: Live Recharts 30-Day Health Trends Component */}
+            <React.Suspense fallback={<div className="p-8 text-center text-xs text-slate-500 font-bold">{isUrdu ? 'وائٹلز ٹرینڈ چارٹ لوڈ ہو رہا ہے...' : 'Loading 30-Day Health Analytics...'}</div>}>
+              <HealthTrends
+                patientMrn={patientMrn}
+                patientName={patientDisplayName}
+                language={language}
+                showSelfLogOption={true}
+              />
+            </React.Suspense>
           </div>
         )}
 
@@ -1639,16 +1643,18 @@ export const PatientDashboardView: React.FC<PatientDashboardViewProps> = ({
         )}
 
         {/* =================================================================== */}
-        {/* TAB 5: VITAL SIGNS TREND & NURSING CARE INPUTS (RECHARTS) */}
+        {/* TAB 5: HEALTH TRENDS (RECHARTS 30-DAY HEART RATE, TEMP, BLOOD PRESSURE) */}
         {/* =================================================================== */}
         {activeTab === 'vitals' && (
           <div className="space-y-6">
-            <PatientVitalsTrendChart
-              patientMrn={patientMrn}
-              patientName={patientDisplayName}
-              language={language}
-              showSelfLogOption={true}
-            />
+            <React.Suspense fallback={<div className="p-8 text-center text-xs text-slate-500 font-bold">{isUrdu ? 'وائٹلز ٹرینڈ چارٹ لوڈ ہو رہا ہے...' : 'Loading 30-Day Health Analytics...'}</div>}>
+              <HealthTrends
+                patientMrn={patientMrn}
+                patientName={patientDisplayName}
+                language={language}
+                showSelfLogOption={true}
+              />
+            </React.Suspense>
           </div>
         )}
       </div>
@@ -1993,15 +1999,19 @@ export const PatientDashboardView: React.FC<PatientDashboardViewProps> = ({
       )}
 
       {/* Telehealth Live WebRTC Video Consultation Screen */}
-      <Telehealth
-        isOpen={isTelehealthOpen}
-        onClose={() => setIsTelehealthOpen(false)}
-        currentUser={currentUser}
-        targetUser={telehealthTargetUser}
-        callerRole="patient"
-        appointmentContext={telehealthAppointmentContext}
-        language={language}
-      />
+      {isTelehealthOpen && (
+        <React.Suspense fallback={null}>
+          <Telehealth
+            isOpen={isTelehealthOpen}
+            onClose={() => setIsTelehealthOpen(false)}
+            currentUser={currentUser}
+            targetUser={telehealthTargetUser}
+            callerRole="patient"
+            appointmentContext={telehealthAppointmentContext}
+            language={language}
+          />
+        </React.Suspense>
+      )}
     </div>
   );
 };

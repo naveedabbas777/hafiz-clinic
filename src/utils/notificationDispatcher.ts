@@ -1,7 +1,7 @@
 import { Appointment, MoneySlip } from '../types';
 
 export interface DispatchNotificationParams {
-  type: 'appointment_confirm' | 'diagnostic_appointment' | 'slip_receipt' | 'rx_advisory' | 'lab_ready' | 'custom';
+  type: 'appointment_confirm' | 'pending_appointment' | 'diagnostic_appointment' | 'slip_receipt' | 'rx_advisory' | 'lab_ready' | 'custom';
   recipientPhone?: string;
   recipientName?: string;
   patientName?: string;
@@ -76,6 +76,38 @@ Location: Hafiz Clinic, Wazirabad Road, Gujranwala
 Helpline: 0300-6428789
 
 Please arrive 10 minutes prior to your time. Thank you!`,
+      };
+
+    case 'pending_appointment':
+      return {
+        urdu: `محترم ${recipientName} صاحب!
+حافظ کلینک اینڈ ہیلتھ کیئر سنٹر میں آپ کی اپائنٹمنٹ کی درخواست موصول ہو چکی ہے اور تصدیق کے عمل میں ہے (Pending Verification)۔
+
+📋 اپائنٹمنٹ تفصیلات:
+👤 مریض کا نام: ${recipientName}
+👨‍⚕️ معالج / ڈاکٹر: ${doctorName}
+📅 تاریخ: ${date}
+⏰ وقت / سلاٹ: ${timeSlot}
+🎫 متوقع ٹوکن: #${tokenNumber}
+${problemOrNotes ? `🩺 طبی معائنہ / مسئلہ: ${problemOrNotes}\n` : ''}🏥 کلینک کا پتہ: حافظ کلینک، نزد الحبیب بیکری، وزیرآباد روڈ، گوجرانوالہ
+
+⚠️ ضروری نوٹ: کلینک کوآرڈینیٹر آپ کی آمد کے شیڈول کی تصدیق کرے گا۔ کسی بھی وقت تبدیلی یا استفسار کے لیے اس نمبر پر رابطہ فرمائیں۔
+📞 ہیلپ لائن: 0300-6428789
+شکریہ! حافظ کلینک اینڈ ہیلتھ کیئر سسٹم`,
+        english: `Dear ${recipientName},
+Your appointment request at Hafiz Clinic & Healthcare System has been received and is currently under review (Pending Confirmation).
+
+📋 Appointment Details:
+👤 Patient Name: ${recipientName}
+👨‍⚕️ Assigned Doctor: ${doctorName}
+📅 Scheduled Date: ${date}
+⏰ Time Slot: ${timeSlot}
+🎫 Expected Token: #${tokenNumber}
+${problemOrNotes ? `🩺 Concern / Service: ${problemOrNotes}\n` : ''}🏥 Address: Hafiz Clinic, Near Al-Habib Bakery, Wazirabad Road, Gujranwala
+
+⚠️ Important: Our clinic reception will verify your schedule. Please arrive 10 minutes prior to your slot.
+📞 Helpline: 0300-6428789
+Thank you! Hafiz Clinic Healthcare Team`,
       };
 
     case 'diagnostic_appointment':
@@ -194,5 +226,71 @@ export function sendSMSNotification(params: DispatchNotificationParams, language
   const encoded = encodeURIComponent(message);
   const smsUrl = `sms:${phone}?body=${encoded}`;
   window.open(smsUrl, '_blank');
+}
+
+/**
+ * Generates an automated WhatsApp message template specifically tailored for pending appointments.
+ * Includes patient name, doctor, and date/time with clear bilingual formatting.
+ */
+export function generatePendingAppointmentWhatsAppTemplate(
+  appointment: Appointment,
+  isUrdu: boolean = true
+): {
+  urdu: string;
+  english: string;
+  activeMessage: string;
+  waUrl: string;
+  phone: string;
+} {
+  const tokenNumber =
+    appointment.tokenNumber ||
+    (appointment as any).token ||
+    (appointment.id && appointment.id.startsWith('APP-')
+      ? appointment.id.replace('APP-', '')
+      : '101');
+
+  const texts = generateNotificationText({
+    type: 'pending_appointment',
+    recipientPhone: appointment.phone,
+    patientName: appointment.patientName,
+    doctorName: appointment.doctorName,
+    appointmentDate: appointment.date,
+    timeSlot: appointment.timeSlot,
+    tokenNumber,
+    problemOrNotes: appointment.problem,
+    isUrdu,
+  });
+
+  const phone = cleanPakistanPhoneNumber(appointment.phone);
+  const activeMessage = isUrdu ? texts.urdu : texts.english;
+  const encoded = encodeURIComponent(activeMessage);
+  const waUrl = phone ? `https://wa.me/${phone}?text=${encoded}` : '';
+
+  return {
+    urdu: texts.urdu,
+    english: texts.english,
+    activeMessage,
+    waUrl,
+    phone,
+  };
+}
+
+/**
+ * Directly opens WhatsApp with the automated pending appointment message template.
+ */
+export function sendPendingAppointmentWhatsApp(
+  appointment: Appointment,
+  isUrdu: boolean = true
+): void {
+  const template = generatePendingAppointmentWhatsAppTemplate(appointment, isUrdu);
+  if (!template.phone) {
+    alert(
+      isUrdu
+        ? 'مریض کا درست موبائل فون نمبر موجود نہیں ہے۔'
+        : 'Valid recipient mobile phone number is missing.'
+    );
+    return;
+  }
+  window.open(template.waUrl, '_blank', 'noopener,noreferrer');
 }
 

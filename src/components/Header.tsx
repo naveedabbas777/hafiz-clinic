@@ -84,14 +84,18 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Top Banner Bar */}
       <div className="bg-gradient-to-r from-emerald-950 via-teal-950 to-slate-950 text-white py-2 px-4 text-xs md:text-sm" dir="ltr">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-2">
-          {/* Left / Accreditation */}
-          <div className="flex items-center gap-2 font-medium">
-            <span className="bg-amber-400 text-emerald-950 px-2.5 py-0.5 rounded-full font-black text-xs flex items-center gap-1 shadow-sm">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              {language === 'urdu' ? 'پنجاب ہیلتھ کیئر کمیشن منظور شدہ' : 'PHC Approved Hospital'}
+          {/* Left / Official Accreditation */}
+          <div className="flex items-center gap-2 text-xs font-semibold text-emerald-200">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span className="text-white font-bold tracking-tight">
+              {language === 'urdu' ? 'پنجاب ہیلتھ کیئر کمیشن منظور شدہ سنٹر' : 'PHC Accredited Healthcare System'}
             </span>
-            <span className="hidden sm:inline text-emerald-200">|</span>
-            <span className="hidden sm:inline text-emerald-100 text-xs">
+            <span aria-hidden="true" className="text-emerald-500">·</span>
+            <span className="text-emerald-300 font-mono text-[11px]">
+              {settings.punjabHealthRegNo || 'PHC-REG-849201'}
+            </span>
+            <span aria-hidden="true" className="hidden sm:inline text-emerald-500">·</span>
+            <span className="hidden sm:inline text-emerald-200 text-xs">
               {settings.taglineUrdu}
             </span>
           </div>

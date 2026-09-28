@@ -21,6 +21,8 @@ import uploadRoutes from './server/routes/uploadRoutes';
 import callRoutes from './server/routes/callRoutes';
 import slipRoutes from './server/routes/slipRoutes';
 import erpRoutes from './server/routes/erpRoutes';
+import emailRoutes from './server/routes/emailRoutes';
+import { generateSitemapXml, generateRobotsTxt } from './src/services/sitemapGenerator';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
@@ -50,6 +52,24 @@ async function startServer() {
   app.use('/api/calls', callRoutes);
   app.use('/api/slips', slipRoutes);
   app.use('/api/erp', erpRoutes);
+  app.use('/api/email', emailRoutes);
+
+  // Dynamic SEO XML Sitemap & robots.txt routes for Search Engine Spiders
+  app.get('/sitemap.xml', (req, res) => {
+    const hostHeader = req.get('host') || 'hafizclinic.com';
+    const domain = process.env.APP_URL || `${req.protocol}://${hostHeader}`;
+    const xml = generateSitemapXml({ domain });
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    res.send(xml);
+  });
+
+  app.get('/robots.txt', (req, res) => {
+    const hostHeader = req.get('host') || 'hafizclinic.com';
+    const domain = process.env.APP_URL || `${req.protocol}://${hostHeader}`;
+    const txt = generateRobotsTxt(domain);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.send(txt);
+  });
 
   // Vite Development / Production SPA Middleware
   if (process.env.NODE_ENV !== 'production') {

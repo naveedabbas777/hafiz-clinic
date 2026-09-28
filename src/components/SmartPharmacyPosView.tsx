@@ -1,7 +1,51 @@
-import React, { useState } from 'react';
-import { ShoppingCart, AlertTriangle, Clock, Barcode, Plus, Trash2, Search, CheckCircle, Package, ArrowRight, Printer, RefreshCw, X, ShieldAlert, Sparkles } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import {
+  ShoppingCart,
+  AlertTriangle,
+  Clock,
+  Barcode,
+  Plus,
+  Trash2,
+  Search,
+  CheckCircle,
+  Package,
+  ArrowRight,
+  Printer,
+  RefreshCw,
+  X,
+  ShieldAlert,
+  Sparkles,
+  Calendar,
+  TrendingUp,
+  Activity,
+  FileText,
+  Zap,
+  BarChart3,
+  Table as TableIcon,
+  LayoutGrid,
+  AlertCircle,
+  TrendingDown,
+  Camera,
+  QrCode,
+} from 'lucide-react';
 import { PharmacyBatchItem, Product, StaffUser } from '../types';
 import { INITIAL_PHARMACY_BATCHES } from '../data/pharmacyBatchData';
+import {
+  calculatePredictiveReorderForecasts,
+  recordDispensing,
+  generatePurchaseOrderHtml,
+  PredictiveReorderForecast,
+} from '../utils/predictiveInventory';
+import {
+  InventoryPredictionService,
+  ReorderPrediction,
+  recordDispensingTransaction,
+} from '../services/inventoryPredictionService';
+
+// Lazy-loaded chart and QR scanner modules for high performance
+const MedicineUsageTrendChart = React.lazy(() => import('./MedicineUsageTrendChart').then((m) => ({ default: m.MedicineUsageTrendChart })));
+const Modal30DayLineChart = React.lazy(() => import('./Modal30DayLineChart').then((m) => ({ default: m.Modal30DayLineChart })));
+const PharmacyQrScannerModal = React.lazy(() => import('./PharmacyQrScannerModal').then((m) => ({ default: m.PharmacyQrScannerModal })));
 
 interface Props {
   products: Product[];
@@ -32,7 +76,16 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
 
   const [searchQuery, setSearchQuery] = useState('');
   const [barcodeInput, setBarcodeInput] = useState('');
-  const [filterTab, setFilterTab] = useState<'all' | 'low_stock' | 'expiring_soon'>('all');
+  const [filterTab, setFilterTab] = useState<'all' | 'trending_stockout' | 'low_stock' | 'expiring_soon' | 'reorder_needed'>('all');
+  const [inventoryViewMode, setInventoryViewMode] = useState<'table' | 'cards'>('table');
+  const [leadTimeDays, setLeadTimeDays] = useState<number>(4);
+  const [selectedBatchIdForChart, setSelectedBatchIdForChart] = useState<string>(() => {
+    return INITIAL_PHARMACY_BATCHES[0]?.id || 'BATCH-JOINT-01';
+  });
+  const [showUsageTrendChart, setShowUsageTrendChart] = useState<boolean>(true);
+  const [isPredictiveModalOpen, setIsPredictiveModalOpen] = useState(false);
+  const [selectedForecastForDetail, setSelectedForecastForDetail] = useState<PredictiveReorderForecast | null>(null);
+  const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
 
   // POS Cart State
   const [posCart, setPosCart] = useState<PosCartItem[]>([]);
@@ -169,20 +222,52 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
     return exp.getTime() < today.getTime();
   };
 
-  // Barcode quick search & instant cart add
+  // Barcode / Token / MRN quick search & instant cart add
   const handleBarcodeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!barcodeInput.trim()) return;
+    const query = barcodeInput.trim();
+    if (!query) return;
 
+    // 1. Check if input matches an active Doctor Prescription Token or MRN (1-Click Prescription-to-Cart)
+    const queryClean = query.toLowerCase();
+    const queryDigits = query.replace(/\D/g, '');
+    const matchedRx = pendingDoctorRxList.find((rx) => {
+      const tok = (rx.tokenNumber || '').toLowerCase();
+      const tokDigits = tok.replace(/\D/g, '');
+      const mrn = (rx.mrnNumber || '').toLowerCase();
+      const mrnDigits = mrn.replace(/\D/g, '');
+      const ph = (rx.phone || '').replace(/\D/g, '');
+
+      return (
+        tok === queryClean ||
+        (queryDigits && tokDigits === queryDigits) ||
+        mrn === queryClean ||
+        (queryDigits && mrnDigits === queryDigits) ||
+        (queryDigits && ph.includes(queryDigits)) ||
+        (rx.patientName && rx.patientName.toLowerCase().includes(queryClean))
+      );
+    });
+
+    if (matchedRx) {
+      handleLoadRxIntoCart(matchedRx);
+      setBarcodeInput('');
+      return;
+    }
+
+    // 2. Check batches by Barcode or Batch Number
     const matched = batches.find(
-      (b) => b.barcode?.trim() === barcodeInput.trim() || b.batchNumber.toLowerCase() === barcodeInput.trim().toLowerCase()
+      (b) => b.barcode?.trim() === query || b.batchNumber.toLowerCase() === queryClean
     );
 
     if (matched) {
       handleAddToCart(matched);
       setBarcodeInput('');
     } else {
-      alert(isUrdu ? `بارکوڈ (${barcodeInput}) کے ساتھ کوئی دوا نہیں ملی۔` : `No item found matching barcode: ${barcodeInput}`);
+      alert(
+        isUrdu
+          ? `بارکوڈ، بیچ یا ٹوکن نمبر (${query}) کے ساتھ کوئی دوا یا او پی ڈی نسخہ نہیں ملا۔`
+          : `No medicine batch or active doctor prescription found matching: ${query}`
+      );
     }
   };
 
@@ -262,7 +347,7 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
       return;
     }
 
-    // Deduct stock
+    // Deduct stock locally
     const updatedBatches = batches.map((b) => {
       const soldItem = posCart.find((ci) => ci.batch.id === b.id);
       if (soldItem) {
@@ -272,8 +357,36 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
     });
     saveBatchesState(updatedBatches);
 
-    // Thermal Receipt HTML
+    // Record dispensing in 30-day time series for predictive algorithm
     const slipNo = `PHARM-${Math.floor(1000 + Math.random() * 9000)}`;
+    posCart.forEach((ci) => {
+      recordDispensing(ci.batch, ci.quantity, slipNo, customerName || 'Walk-in Patient');
+      recordDispensingTransaction(ci.batch, ci.quantity, slipNo, customerName || 'Walk-in Patient');
+    });
+    try {
+      fetch('/api/erp/pharmacy-sale', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slipNo,
+          customerName: customerName || 'Walk-in Patient',
+          customerPhone,
+          paymentMethod,
+          subtotal,
+          discount: discountAmount,
+          totalAmount: totalPayable,
+          items: posCart.map((ci) => ({
+            batchId: ci.batch.id,
+            productName: ci.batch.productNameEnglish || ci.batch.productNameUrdu,
+            quantity: ci.quantity,
+            salePrice: ci.batch.salePricePKR,
+            batchNumber: ci.batch.batchNumber,
+          })),
+        }),
+      }).catch(() => {});
+    } catch (_) {}
+
+    // Thermal Receipt HTML (Standard 80mm ESC/POS Computerized Receipt with PHC seal)
     const printHtml = `
       <!DOCTYPE html>
       <html lang="ur" dir="rtl">
@@ -281,56 +394,66 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
         <meta charset="utf-8" />
         <title>Pharmacy Receipt — ${slipNo}</title>
         <style>
-          @page { size: 80mm auto; margin: 4mm; }
-          body { font-family: system-ui, sans-serif; width: 72mm; margin: 0 auto; padding: 2mm; font-size: 11px; color: #000; }
+          @page { size: 80mm auto; margin: 3mm; }
+          body { font-family: system-ui, -apple-system, sans-serif; width: 74mm; margin: 0 auto; padding: 2mm; font-size: 11px; color: #000; }
           .center { text-align: center; }
-          .title { font-size: 14px; font-weight: 900; margin: 0; }
-          .sub { font-size: 9px; color: #333; margin-top: 2px; }
-          .divider { border-top: 1px dashed #000; margin: 6px 0; }
-          .row { display: flex; justify-content: space-between; margin: 2px 0; }
+          .title { font-size: 15px; font-weight: 900; margin: 0; }
+          .sub { font-size: 9.5px; color: #333; margin-top: 2px; }
+          .phc-badge { display: block; border: 1.5px solid #047857; color: #047857; padding: 3px 6px; border-radius: 5px; font-size: 8.5px; font-weight: 900; margin: 5px 0; text-align: center; background: #f0fdf4; }
+          .divider { border-top: 1px dashed #000; margin: 5px 0; }
+          .row { display: flex; justify-content: space-between; margin: 2px 0; font-size: 10.5px; }
           .bold { font-weight: bold; }
-          table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 10px; }
-          th { border-bottom: 1px solid #000; text-align: right; padding: 2px; }
+          table { width: 100%; border-collapse: collapse; margin: 5px 0; font-size: 10px; }
+          th { border-bottom: 1.5px solid #000; text-align: right; padding: 2px; font-weight: bold; }
           td { padding: 3px 2px; }
         </style>
       </head>
       <body>
         <div class="center">
           <div class="title">${clinicSettings?.clinicNameUrdu || 'حافظ کلینک اینڈ فارمیسی'}</div>
-          <div class="sub">PHC Reg No: ${clinicSettings?.phcApprovalNo || 'PHC-786/26'} | فون: ${clinicSettings?.phone1 || '0300-1234567'}</div>
-          <div class="sub">آفیشل فارمیسی کیش میمو (Pharmacy Sale Slip)</div>
+          <div class="sub">${clinicSettings?.addressUrdu || 'حافظ آباد روڈ، نزد مین مارکیٹ، پنجاب پاکستان'}</div>
+          <div class="sub">فون: ${clinicSettings?.phone1 || '0300-1234567'} | PHC Lic: ${clinicSettings?.phcApprovalNo || 'PHC/2026/8940'}</div>
+          <div class="phc-badge">★ PUNJAB HEALTHCARE COMMISSION CERTIFIED PHARMACY ★<br/><span style="font-size:7.5px; color:#475569;">TAX NTN: 4892019-2 | GD-PHARM-2026</span></div>
+          <div style="font-size: 10px; font-weight: bold;">کمپیوٹرائزڈ فارمیسی کیش میمو (80mm Computerized POS)</div>
         </div>
         <div class="divider"></div>
-        <div class="row"><span>پرچی نمبر:</span><span class="bold">${slipNo}</span></div>
+        <div class="row"><span>پرچی نمبر / Slip #:</span><span class="bold font-mono">${slipNo}</span></div>
         <div class="row"><span>تاریخ و وقت:</span><span>${new Date().toLocaleString()}</span></div>
         <div class="row"><span>کسٹمر نام:</span><span class="bold">${customerName || 'واک اِن کسٹمر'}</span></div>
-        <div class="row"><span>پیمنٹ بذریعہ:</span><span class="bold">${paymentMethod}</span></div>
+        <div class="row"><span>ادائیگی طریقہ:</span><span class="bold">${paymentMethod} (موصول شد)</span></div>
         <div class="divider"></div>
         <table>
           <thead>
             <tr>
-              <th>دوا کا نام</th>
+              <th>دوا کا نام و تفصیل</th>
               <th style="text-align:center;">تعداد</th>
-              <th style="text-align:left;">قیمت</th>
+              <th style="text-align:left;">رقم</th>
             </tr>
           </thead>
           <tbody>
-            ${posCart.map((i) => `
+            ${posCart
+              .map(
+                (i) => `
               <tr>
-                <td>${i.batch.productNameUrdu || i.batch.productNameEnglish}<br/><small style="color:#555;">بیچ: ${i.batch.batchNumber}</small></td>
-                <td style="text-align:center;">${i.quantity}</td>
-                <td style="text-align:left;">Rs. ${i.batch.salePricePKR * i.quantity}</td>
+                <td><strong>${i.batch.productNameUrdu || i.batch.productNameEnglish}</strong><br/><small style="color:#555;">بیچ: ${i.batch.batchNumber} | میعاد: ${i.batch.expiryDate}</small></td>
+                <td style="text-align:center; font-weight:bold;">${i.quantity}</td>
+                <td style="text-align:left; font-weight:bold;">Rs. ${i.batch.salePricePKR * i.quantity}</td>
               </tr>
-            `).join('')}
+            `
+              )
+              .join('')}
           </tbody>
         </table>
         <div class="divider"></div>
-        <div class="row"><span>سب ٹوٹل:</span><span>Rs. ${subtotal}</span></div>
-        ${discountAmount > 0 ? `<div class="row"><span>رعایت (Discount):</span><span>- Rs. ${discountAmount}</span></div>` : ''}
-        <div class="row" style="font-size: 13px; font-weight: 900;"><span>کل واجب الادا:</span><span>Rs. ${totalPayable}</span></div>
+        <div class="row"><span>سب ٹوٹل (Subtotal):</span><span>Rs. ${subtotal}</span></div>
+        ${discountAmount > 0 ? `<div class="row"><span>رعایت (Special Discount):</span><span style="color:#b91c1c;">- Rs. ${discountAmount}</span></div>` : ''}
+        <div class="row" style="font-size: 13px; font-weight: 900; border-top: 1px solid #000; padding-top: 3px; margin-top: 3px;">
+          <span>کل وصول شدہ (Total Paid):</span><span>Rs. ${totalPayable}</span>
+        </div>
         <div class="divider"></div>
-        <div class="center" style="font-size: 9px; margin-top: 6px;">
-          کھولی ہوئی یا خردبرد شدہ دوا واپس نہیں ہوگی۔ صحت یابی کی دعا کے ساتھ شکریہ!
+        <div class="center" style="font-size: 8.5px; margin-top: 5px; line-height: 1.4;">
+          کھولی ہوئی یا بغیر رسید دوا تبدیل نہیں ہوگی۔ صحت یابی کی مخلصانہ دعا کے ساتھ شکریہ!<br/>
+          <strong style="font-size:7.5px; color:#047857;">Hafiz Clinic Smart Pharmacy ERP • System Verified</strong>
         </div>
         <script>window.onload = function() { window.print(); }</script>
       </body>
@@ -350,6 +473,36 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
     setCustomerPhone('');
   };
 
+  // Inventory Prediction Service: 30-Day average usage & Recommended Reorder Date calculation
+  const inventoryPredictions = useMemo(() => {
+    return InventoryPredictionService.generateInventoryPredictions(batches, leadTimeDays);
+  }, [batches, leadTimeDays]);
+
+  const predictionMap = useMemo(() => {
+    const map = new Map<string, ReorderPrediction>();
+    inventoryPredictions.forEach((p) => map.set(p.batchId, p));
+    return map;
+  }, [inventoryPredictions]);
+
+  const trendingStockoutCount = useMemo(() => {
+    return inventoryPredictions.filter((p) => p.isTrendingTowardStockout).length;
+  }, [inventoryPredictions]);
+
+  // Predictive Inventory & 30-Day Dispensing Pattern Algorithm (compat)
+  const predictiveForecasts = useMemo(() => {
+    return calculatePredictiveReorderForecasts(batches, leadTimeDays);
+  }, [batches, leadTimeDays]);
+
+  const forecastMap = useMemo(() => {
+    const map = new Map<string, PredictiveReorderForecast>();
+    predictiveForecasts.forEach((f) => map.set(f.batchId, f));
+    return map;
+  }, [predictiveForecasts]);
+
+  const criticalReorderCount = predictiveForecasts.filter((f) => f.urgency === 'CRITICAL_NOW').length;
+  const soonReorderCount = predictiveForecasts.filter((f) => f.urgency === 'REORDER_SOON').length;
+  const totalReorderNeeded = criticalReorderCount + soonReorderCount;
+
   // Filtered batches
   const filteredBatches = batches.filter((b) => {
     const matchesSearch =
@@ -359,18 +512,45 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
       (b.barcode && b.barcode.includes(searchQuery));
 
     if (!matchesSearch) return false;
+    if (filterTab === 'trending_stockout') {
+      const p = predictionMap.get(b.id);
+      return p?.isTrendingTowardStockout ?? false;
+    }
     if (filterTab === 'low_stock') return b.currentStock <= b.minThreshold;
     if (filterTab === 'expiring_soon') return isExpiringSoon(b.expiryDate) || isExpired(b.expiryDate);
+    if (filterTab === 'reorder_needed') {
+      const f = forecastMap.get(b.id);
+      return f?.urgency === 'CRITICAL_NOW' || f?.urgency === 'REORDER_SOON';
+    }
     return true;
   });
 
   const totalLowStock = batches.filter((b) => b.currentStock <= b.minThreshold).length;
   const totalExpiringSoon = batches.filter((b) => isExpiringSoon(b.expiryDate) || isExpired(b.expiryDate)).length;
 
+  // Enforce FIFO (First-In, First-Out): identify earliest expiration date batch for each product
+  const fifoNearestMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    batches.forEach((b) => {
+      const prodKey = (b.productNameEnglish || b.productNameUrdu || '').trim().toLowerCase();
+      if (!prodKey) return;
+      if (!map[prodKey]) {
+        map[prodKey] = b.id;
+      } else {
+        const existingBatch = batches.find((item) => item.id === map[prodKey]);
+        if (existingBatch && new Date(b.expiryDate).getTime() < new Date(existingBatch.expiryDate).getTime()) {
+          map[prodKey] = b.id;
+        }
+      }
+    });
+    return map;
+  }, [batches]);
+
   return (
     <div className="space-y-6" dir={isUrdu ? 'rtl' : 'ltr'}>
-      {/* Top Banner with Alert Counters */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {/* Top Banner with Alert Counters & Predictive Intelligence */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Total Items */}
         <div className="bg-gradient-to-r from-emerald-800 to-teal-800 text-white p-4 rounded-3xl shadow-sm flex items-center justify-between">
           <div>
             <div className="text-xs text-emerald-200 font-bold uppercase">{isUrdu ? 'کل فارمیسی آئٹمز' : 'Total Batches'}</div>
@@ -381,6 +561,7 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
           </div>
         </div>
 
+        {/* Low Stock Warning */}
         <div
           onClick={() => setFilterTab('low_stock')}
           className={`p-4 rounded-3xl shadow-sm flex items-center justify-between cursor-pointer border transition-all ${
@@ -397,10 +578,11 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
             <div className="text-2xl font-black text-rose-700">{totalLowStock} {isUrdu ? 'آئٹمز' : 'Items'}</div>
           </div>
           <span className="text-xs font-bold bg-rose-200 text-rose-900 px-2.5 py-1 rounded-full">
-            {isUrdu ? 'دیکھیں' : 'Filter'}
+            {isUrdu ? 'فلٹر' : 'Filter'}
           </span>
         </div>
 
+        {/* Expiring Soon */}
         <div
           onClick={() => setFilterTab('expiring_soon')}
           className={`p-4 rounded-3xl shadow-sm flex items-center justify-between cursor-pointer border transition-all ${
@@ -417,8 +599,44 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
             <div className="text-2xl font-black text-amber-700">{totalExpiringSoon} {isUrdu ? 'آئٹمز' : 'Items'}</div>
           </div>
           <span className="text-xs font-bold bg-amber-200 text-amber-900 px-2.5 py-1 rounded-full">
-            {isUrdu ? 'دیکھیں' : 'Filter'}
+            {isUrdu ? 'فلٹر' : 'Filter'}
           </span>
+        </div>
+
+        {/* Predictive Inventory & Reorder Intelligence (30-Day Average Usage & Auto Reorder Date) */}
+        <div
+          onClick={() => {
+            if (trendingStockoutCount > 0 && filterTab !== 'trending_stockout') {
+              setFilterTab('trending_stockout');
+            } else {
+              setIsPredictiveModalOpen(true);
+            }
+          }}
+          className={`p-4 rounded-3xl shadow-sm flex items-center justify-between cursor-pointer border transition-all ${
+            trendingStockoutCount > 0
+              ? 'bg-gradient-to-br from-amber-50 via-rose-50 to-purple-50 border-amber-300 text-amber-950 hover:shadow-md'
+              : 'bg-gradient-to-br from-purple-50 to-indigo-50 border-purple-200 text-purple-900 hover:bg-purple-100'
+          }`}
+        >
+          <div>
+            <div className="text-xs text-amber-700 font-black flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+              <span>{isUrdu ? 'انوینٹری پیشین گوئی سروس' : 'Inventory Prediction Service'}</span>
+            </div>
+            <div className="text-2xl font-black text-rose-700 flex items-baseline gap-1.5">
+              <span>{trendingStockoutCount}</span>
+              <span className="text-xs font-bold text-amber-800">{isUrdu ? 'اسٹاک آؤٹ خطرہ' : 'Trending to Stockout'}</span>
+            </div>
+            <div className="text-[10px] text-slate-600 font-bold mt-0.5">
+              ۳۰ روزہ اوسط کھپت و تجویز کردہ ری آرڈر تاریخ
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-xs font-black bg-amber-600 hover:bg-amber-700 text-slate-950 px-2.5 py-1 rounded-full shadow-xs flex items-center gap-1 border border-amber-700/30">
+              <Zap className="w-3 h-3 text-slate-950" />
+              <span>{isUrdu ? 'فلٹر دیکھیں' : 'Filter'}</span>
+            </span>
+          </div>
         </div>
       </div>
 
@@ -443,9 +661,20 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
                 </p>
               </div>
             </div>
-            <span className="bg-emerald-700 text-white text-xs font-black px-3 py-1 rounded-full">
-              {pendingDoctorRxList.length} {isUrdu ? 'نسخہ جات تیار ہیں' : 'Ready'}
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsQrScannerOpen(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-1 rounded-full flex items-center gap-1 shadow-xs transition-colors cursor-pointer"
+                title={isUrdu ? 'مریض کا پرچی / ٹوکن کیو آر کوڈ اسکین کریں' : 'Scan Patient Token QR Code'}
+              >
+                <Camera className="w-3.5 h-3.5 text-emerald-200" />
+                <span>{isUrdu ? 'ٹوکن اسکین کریں' : 'Scan Token QR'}</span>
+              </button>
+              <span className="bg-emerald-700 text-white text-xs font-black px-3 py-1 rounded-full">
+                {pendingDoctorRxList.length} {isUrdu ? 'نسخہ جات تیار ہیں' : 'Ready'}
+              </span>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -495,7 +724,7 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
         {/* Left / Center (Columns 7): INVENTORY & FAST BARCODE SEARCH */}
         <div className="lg:col-span-7 space-y-4">
           <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm space-y-4">
-            {/* Fast Barcode Input */}
+            {/* Fast Barcode Input & Live Camera QR Scanner */}
             <form onSubmit={handleBarcodeSubmit} className="flex gap-2">
               <div className="relative flex-1">
                 <Barcode className="w-5 h-5 absolute right-3 top-3 text-slate-400" />
@@ -507,9 +736,22 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
                   className="w-full bg-slate-50 border-2 border-emerald-500 rounded-2xl pr-10 pl-3 py-2.5 text-xs font-bold outline-none focus:bg-white"
                 />
               </div>
+
+              {/* Camera QR Scanner Trigger Button */}
+              <button
+                type="button"
+                onClick={() => setIsQrScannerOpen(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3.5 py-2.5 rounded-2xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer shrink-0"
+                title={isUrdu ? 'کیمرہ کیو آر اسکینر کھولیں (مریض کا ٹوکن یا دوا لیبل اسکین کریں)' : 'Open Camera QR Scanner (Scan Patient MRN or Medicine Label)'}
+              >
+                <Camera className="w-4 h-4 text-emerald-200" />
+                <span className="hidden sm:inline">{isUrdu ? '📷 کیمرہ اسکینر' : '📷 Camera QR'}</span>
+                <span className="sm:hidden">QR</span>
+              </button>
+
               <button
                 type="submit"
-                className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-4 py-2.5 rounded-2xl flex items-center gap-1 shadow-xs transition-colors"
+                className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs px-4 py-2.5 rounded-2xl flex items-center gap-1 shadow-xs transition-colors shrink-0 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 <span>{isUrdu ? 'شامل کریں' : 'Add'}</span>
@@ -519,7 +761,7 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
             {/* Controls Bar */}
             <div className="flex flex-wrap justify-between items-center gap-3">
               {/* Filter Tabs */}
-              <div className="flex bg-slate-100 p-1 rounded-2xl gap-1 text-xs font-bold">
+              <div className="flex flex-wrap bg-slate-100 p-1 rounded-2xl gap-1 text-xs font-bold">
                 <button
                   type="button"
                   onClick={() => setFilterTab('all')}
@@ -528,6 +770,26 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
                   }`}
                 >
                   {isUrdu ? 'تمام ادویات' : 'All'} ({batches.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterTab('trending_stockout')}
+                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1 ${
+                    filterTab === 'trending_stockout' ? 'bg-amber-500 text-slate-950 font-black shadow-xs' : 'text-amber-800 hover:bg-amber-100'
+                  }`}
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-950" />
+                  <span>{isUrdu ? 'اسٹاک آؤٹ خطرہ' : 'Trending to Stockout'}</span> ({trendingStockoutCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterTab('reorder_needed')}
+                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1 ${
+                    filterTab === 'reorder_needed' ? 'bg-purple-700 text-white shadow-xs' : 'text-purple-700 hover:bg-purple-50'
+                  }`}
+                >
+                  <Zap className="w-3 h-3 text-amber-300" />
+                  <span>{isUrdu ? 'ری آرڈر طلب' : 'Reorder Due'}</span> ({totalReorderNeeded})
                 </button>
                 <button
                   type="button"
@@ -549,16 +811,109 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
                 </button>
               </div>
 
-              {/* Add New Batch Button */}
-              <button
-                type="button"
-                onClick={() => setIsAddBatchOpen(true)}
-                className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3.5 py-2 rounded-2xl flex items-center gap-1.5 shadow-xs"
-              >
-                <Plus className="w-3.5 h-3.5 text-emerald-400" />
-                <span>{isUrdu ? 'نیا بیچ / دوا درج کریں' : 'New Batch'}</span>
-              </button>
+              {/* View Switcher & Action Buttons */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Table vs Cards Toggle */}
+                <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setInventoryViewMode('table')}
+                    className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                      inventoryViewMode === 'table' ? 'bg-emerald-700 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <TableIcon className="w-3.5 h-3.5" />
+                    <span>{isUrdu ? 'جدول انوینٹری (Table)' : 'Table View'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInventoryViewMode('cards')}
+                    className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                      inventoryViewMode === 'cards' ? 'bg-emerald-700 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                    <span>{isUrdu ? 'کارڈز ویو (Cards)' : 'Cards View'}</span>
+                  </button>
+                </div>
+
+                {/* 30-Day Recharts Trend Chart Toggle Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowUsageTrendChart(!showUsageTrendChart)}
+                  className={`px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer text-xs font-bold ${
+                    showUsageTrendChart
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                  title="30-Day Usage Trend & Consumption Spikes Chart"
+                >
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>{isUrdu ? (showUsageTrendChart ? 'چارٹ بند کریں' : '📈 ۳۰ روزہ کھپت چارٹ') : (showUsageTrendChart ? 'Hide Chart' : '📈 30-Day Trend')}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsPredictiveModalOpen(true)}
+                  className="bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold px-3 py-2 rounded-2xl flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                  title="30-Day Dispensing Pattern Algorithm"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>{isUrdu ? 'پیشین گوئی تجزیہ' : 'Prediction Model'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsAddBatchOpen(true)}
+                  className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3 py-2 rounded-2xl flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>{isUrdu ? 'نیا بیچ' : 'New Batch'}</span>
+                </button>
+              </div>
             </div>
+
+            {/* Trending Stockout Warning Alert Banner */}
+            {trendingStockoutCount > 0 && filterTab !== 'trending_stockout' && (
+              <div
+                onClick={() => setFilterTab('trending_stockout')}
+                className="bg-amber-100/90 hover:bg-amber-200 border-2 border-amber-400 text-amber-950 p-2.5 rounded-2xl flex items-center justify-between gap-2 text-xs cursor-pointer shadow-xs transition-all"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="p-1 bg-amber-500 text-slate-950 rounded-lg">
+                    <AlertTriangle className="w-4 h-4 animate-bounce" />
+                  </span>
+                  <div>
+                    <span className="font-black">
+                      {isUrdu
+                        ? `⚠️ انوینٹری پیشین گوئی سروس الرٹ: ${trendingStockoutCount} ادویات اسٹاک آؤٹ کے خطرے کی طرف بڑھ رہی ہیں!`
+                        : `⚠️ Inventory Prediction Alert: ${trendingStockoutCount} medicines are trending toward stockout!`}
+                    </span>
+                    <span className="block text-[10.5px] text-amber-900 font-medium">
+                      {isUrdu
+                        ? '۳۰ روزہ اوسط کھپت کی بنیاد پر خودکار تجویز کردہ ری آرڈر تاریخیں نیچے جدول میں ملاحظہ کریں۔'
+                        : 'View auto-calculated Recommended Reorder Dates in the table below to prevent supply disruption.'}
+                    </span>
+                  </div>
+                </div>
+                <span className="bg-amber-900 text-amber-100 font-bold px-3 py-1 rounded-xl text-[11px] whitespace-nowrap">
+                  {isUrdu ? 'فلٹر دیکھیں' : 'Filter Items'} &rarr;
+                </span>
+              </div>
+            )}
+
+            {/* Recharts 30-Day Usage Trend & Consumption Spike Visualizer */}
+            {showUsageTrendChart && (
+              <React.Suspense fallback={<div className="p-8 text-center text-xs text-slate-500 font-bold">{isUrdu ? 'چارٹ لوڈ ہو رہا ہے...' : 'Loading Medicine Analytics Chart...'}</div>}>
+                <MedicineUsageTrendChart
+                  batches={batches}
+                  selectedBatchId={selectedBatchIdForChart}
+                  onSelectBatch={setSelectedBatchIdForChart}
+                  predictionMap={predictionMap}
+                  isUrdu={isUrdu}
+                />
+              </React.Suspense>
+            )}
 
             {/* Search Input */}
             <div className="relative">
@@ -572,105 +927,495 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
               />
             </div>
 
-            {/* Batches Table / Cards */}
-            <div className="space-y-2.5 max-h-[480px] overflow-y-auto pr-1">
-              {filteredBatches.map((b) => {
-                const expiring = isExpiringSoon(b.expiryDate);
-                const expired = isExpired(b.expiryDate);
-                const isLow = b.currentStock <= b.minThreshold;
+            {/* INVENTORY TABLE VIEW */}
+            {inventoryViewMode === 'table' ? (
+              <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs bg-white">
+                <div className="overflow-x-auto max-h-[500px]">
+                  <table className="w-full text-right text-xs border-collapse">
+                    <thead className="bg-slate-900 text-white sticky top-0 z-10 text-[11px] font-bold">
+                      <tr>
+                        <th className="py-3 px-3">{isUrdu ? 'دوا کا نام و تفصیل' : 'Medicine & Batch'}</th>
+                        <th className="py-3 px-2.5 text-center">{isUrdu ? 'موجودہ اسٹاک' : 'Remaining Qty'}</th>
+                        <th className="py-3 px-2.5 text-center bg-slate-800">
+                          <div className="flex items-center justify-center gap-1">
+                            <TrendingUp className="w-3 h-3 text-emerald-400" />
+                            <span>{isUrdu ? '۳۰ روزہ اوسط کھپت' : '30-Day Avg Usage'}</span>
+                          </div>
+                        </th>
+                        <th className="py-3 px-3 text-center bg-purple-950 text-purple-200">
+                          <div className="flex items-center justify-center gap-1">
+                            <Calendar className="w-3 h-3 text-amber-300" />
+                            <span>{isUrdu ? 'تجویز کردہ ری آرڈر تاریخ' : 'Recommended Reorder Date'}</span>
+                          </div>
+                        </th>
+                        <th className="py-3 px-2.5 text-center">{isUrdu ? 'اسٹاک آؤٹ انتباہ' : 'Stockout Warning'}</th>
+                        <th className="py-3 px-2 text-left">{isUrdu ? 'قیمت' : 'Price'}</th>
+                        <th className="py-3 px-2 text-center">{isUrdu ? 'کارروائی' : 'Actions'}</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {filteredBatches.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-12 text-center text-slate-400 font-bold text-xs">
+                            {isUrdu ? 'کوئی میڈیسن اس فلٹر کے مطابق موجود نہیں۔' : 'No medicines matched the filter.'}
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredBatches.map((b) => {
+                          const expiring = isExpiringSoon(b.expiryDate);
+                          const expired = isExpired(b.expiryDate);
+                          const isLow = b.currentStock <= b.minThreshold;
+                          const prodKey = (b.productNameEnglish || b.productNameUrdu || '').trim().toLowerCase();
+                          const isFifoFirst = fifoNearestMap[prodKey] === b.id && !expired && b.currentStock > 0;
+                          const forecast = forecastMap.get(b.id);
+                          const prediction = predictionMap.get(b.id);
+                          const isSelectedForChart = b.id === selectedBatchIdForChart;
 
-                return (
-                  <div
-                    key={b.id}
-                    className={`p-3.5 rounded-2xl border transition-all flex flex-wrap items-center justify-between gap-3 ${
-                      expired
-                        ? 'bg-rose-50 border-rose-300'
-                        : expiring
-                        ? 'bg-amber-50/70 border-amber-200'
-                        : isLow
-                        ? 'bg-orange-50/50 border-orange-200'
-                        : 'bg-white border-slate-200 hover:border-emerald-300'
-                    }`}
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-black text-slate-900 text-sm">{b.productNameUrdu || b.productNameEnglish}</span>
-                        {b.barcode && (
-                          <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border">
-                            {b.barcode}
-                          </span>
-                        )}
-                      </div>
+                          const safeThreshold = prediction?.safetyStockUnits ?? forecast?.safetyStockUnits ?? (b.minThreshold || 8);
+                          const isTrending = prediction?.isTrendingTowardStockout ?? (b.currentStock <= safeThreshold && !expired);
+                          const isCriticalStockout = prediction?.stockoutRiskLevel === 'CRITICAL_STOCKOUT' || forecast?.urgency === 'CRITICAL_NOW';
 
-                      <div className="flex items-center gap-3 text-[11px] text-slate-500 font-medium">
-                        <span>بیچ: <strong>{b.batchNumber}</strong></span>
-                        <span>ریک: <strong>{b.rackLocation || 'A-1'}</strong></span>
-                        <span>
-                          ایکسپائری:{' '}
-                          <strong className={expired ? 'text-rose-600 font-black' : expiring ? 'text-amber-600 font-black' : 'text-slate-700'}>
-                            {b.expiryDate}
-                          </strong>
-                        </span>
-                      </div>
+                          return (
+                            <tr
+                              key={b.id}
+                              onClick={() => setSelectedBatchIdForChart(b.id)}
+                              className={`transition-all cursor-pointer ${
+                                isSelectedForChart
+                                  ? 'bg-emerald-50/90 ring-2 ring-emerald-500 font-semibold shadow-xs'
+                                  : expired
+                                  ? 'bg-rose-50/70 hover:bg-rose-100/70'
+                                  : isCriticalStockout
+                                  ? 'bg-rose-50/90 hover:bg-rose-100/90 font-medium'
+                                  : isTrending
+                                  ? 'bg-amber-50/80 hover:bg-amber-100/80 font-medium'
+                                  : expiring
+                                  ? 'bg-amber-50/40 hover:bg-amber-100/50'
+                                  : 'hover:bg-slate-50'
+                              }`}
+                            >
+                              {/* Medicine & Batch info */}
+                              <td className="py-2.5 px-3">
+                                <div className="space-y-0.5">
+                                  <div className="font-black text-slate-900 text-xs flex items-center gap-1.5">
+                                    <span>{b.productNameUrdu || b.productNameEnglish}</span>
+                                    {isSelectedForChart && (
+                                      <span className="text-[9px] bg-emerald-700 text-white font-bold px-1.5 py-0.2 rounded-full inline-flex items-center gap-0.5">
+                                        <TrendingUp className="w-2.5 h-2.5 text-emerald-200" />
+                                        <span>{isUrdu ? 'چارٹ فعال' : 'Chart Active'}</span>
+                                      </span>
+                                    )}
+                                    {isFifoFirst && (
+                                      <span className="text-[9px] bg-emerald-700 text-white font-bold px-1.5 py-0.2 rounded-full">
+                                        FIFO
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 font-sans">
+                                    {b.productNameEnglish}
+                                  </div>
+                                  <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                                    <span>بیچ: <strong className="text-slate-700 font-mono">{b.batchNumber}</strong></span>
+                                    <span>ریک: <strong className="text-slate-700">{b.rackLocation || 'A-1'}</strong></span>
+                                    <span>میعاد: <strong className={expired ? 'text-rose-600 font-bold' : expiring ? 'text-amber-600 font-bold' : 'text-slate-700'}>{b.expiryDate}</strong></span>
+                                  </div>
+                                </div>
+                              </td>
 
-                      {/* Status Badges */}
-                      <div className="flex items-center gap-1.5 pt-0.5">
-                        {expired && (
-                          <span className="text-[9px] bg-rose-600 text-white font-bold px-2 py-0.5 rounded-full">
-                            {isUrdu ? 'میعاد ختم (Expired)' : 'Expired'}
-                          </span>
-                        )}
-                        {expiring && !expired && (
-                          <span className="text-[9px] bg-amber-500 text-slate-950 font-bold px-2 py-0.5 rounded-full">
-                            {isUrdu ? 'جلد میعاد ختم ہوگی' : 'Expiring Soon'}
-                          </span>
-                        )}
-                        {isLow && (
-                          <span className="text-[9px] bg-orange-600 text-white font-bold px-2 py-0.5 rounded-full">
-                            {isUrdu ? 'کم اسٹاک الرٹ' : 'Low Stock'}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                              {/* Remaining Stock */}
+                              <td className="py-2.5 px-2.5 text-center">
+                                <div className="space-y-0.5">
+                                  <span
+                                    className={`text-xs font-black font-mono px-2 py-0.5 rounded-lg inline-block ${
+                                      b.currentStock <= 0
+                                        ? 'bg-rose-100 text-rose-800'
+                                        : isTrending
+                                        ? 'bg-amber-200 text-amber-950 border border-amber-300'
+                                        : 'bg-slate-100 text-slate-800'
+                                    }`}
+                                  >
+                                    {b.currentStock} یونٹ
+                                  </span>
+                                  <div className="text-[9.5px] text-slate-500 font-medium">
+                                    محفوظ حد: <strong>{safeThreshold}</strong>
+                                  </div>
+                                </div>
+                              </td>
 
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
-                        <div className="text-sm font-black text-emerald-800">Rs. {b.salePricePKR}</div>
-                        <div className="text-[11px] font-bold text-slate-500">
-                          اسٹاک:{' '}
-                          <span className={isLow ? 'text-rose-600 font-black' : 'text-slate-900'}>
-                            {b.currentStock} یونٹ
-                          </span>
+                              {/* 30-Day Avg Usage */}
+                              <td className="py-2.5 px-2.5 text-center bg-slate-50/70">
+                                <div className="space-y-0.5">
+                                  <div className="font-black text-emerald-800 font-mono text-xs">
+                                    {prediction?.averageDailyBurnRate ?? forecast?.averageDailyBurnRate ?? 0}{' '}
+                                    <span className="text-[9.5px] font-sans font-medium text-slate-500">/یومیہ</span>
+                                  </div>
+                                  <div className="text-[9.5px] text-slate-500">
+                                    کل: <strong>{prediction?.dispensedLast30Days ?? forecast?.dispensedLast30Days ?? 0}</strong> یونٹ
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Recommended Reorder Date */}
+                              <td className="py-2.5 px-3 text-center bg-purple-50/50">
+                                <div className="space-y-1">
+                                  <div className="font-black text-slate-900 text-xs flex items-center justify-center gap-1 font-mono">
+                                    <Calendar className="w-3.5 h-3.5 text-purple-700" />
+                                    <span>{prediction?.recommendedReorderDateFormatted ?? forecast?.reorderDateFormatted ?? '—'}</span>
+                                  </div>
+                                  <div>
+                                    {isCriticalStockout || (prediction?.daysUntilReorder === 0) ? (
+                                      <span className="text-[9.5px] bg-rose-600 text-white font-black px-2 py-0.5 rounded-full inline-flex items-center gap-0.5 animate-pulse">
+                                        🚨 آج ہی ری آرڈر! (0 دن باقی)
+                                      </span>
+                                    ) : (prediction?.daysUntilReorder ?? forecast?.daysUntilReorder ?? 0) <= 7 ? (
+                                      <span className="text-[9.5px] bg-amber-500 text-slate-950 font-black px-2 py-0.5 rounded-full inline-flex items-center gap-0.5">
+                                        ⚠️ {prediction?.daysUntilReorder ?? forecast?.daysUntilReorder} دن باقی
+                                      </span>
+                                    ) : (
+                                      <span className="text-[9.5px] bg-purple-100 text-purple-900 font-bold px-2 py-0.5 rounded-full">
+                                        {prediction?.daysUntilReorder ?? forecast?.daysUntilReorder} دن بعد
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+
+                              {/* Stockout Warning Status */}
+                              <td className="py-2.5 px-2.5 text-center">
+                                {isCriticalStockout ? (
+                                  <div className="space-y-0.5">
+                                    <span className="text-[9.5px] bg-rose-600 text-white font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1 animate-pulse shadow-xs">
+                                      <AlertTriangle className="w-3 h-3 text-white" />
+                                      <span>فوری ری آرڈر (Stockout Risk)</span>
+                                    </span>
+                                    <div className="text-[9px] text-rose-700 font-bold">
+                                      {prediction?.runoutDaysRemaining ?? forecast?.runoutDaysRemaining} دن میں صفر
+                                    </div>
+                                  </div>
+                                ) : isTrending ? (
+                                  <div className="space-y-0.5">
+                                    <span className="text-[9.5px] bg-amber-400 text-amber-950 font-black px-2 py-0.5 rounded-full inline-flex items-center gap-1 border border-amber-500 shadow-xs">
+                                      <AlertTriangle className="w-3 h-3 text-amber-900" />
+                                      <span>اسٹاک آؤٹ خطرہ (Trending)</span>
+                                    </span>
+                                    <div className="text-[9px] text-amber-800 font-bold">
+                                      محفوظ حد &le; {safeThreshold} سے کم
+                                    </div>
+                                  </div>
+                                ) : isLow ? (
+                                  <span className="text-[9.5px] bg-orange-100 text-orange-800 font-bold px-2 py-0.5 rounded-full inline-block">
+                                    کم اسٹاک
+                                  </span>
+                                ) : (
+                                  <span className="text-[9.5px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1">
+                                    <CheckCircle className="w-3 h-3 text-emerald-600" />
+                                    <span>تسلی بخش اسٹاک</span>
+                                  </span>
+                                )}
+                              </td>
+
+                              {/* Price */}
+                              <td className="py-2.5 px-2 text-left font-mono font-black text-emerald-800 text-xs">
+                                Rs. {b.salePricePKR}
+                              </td>
+
+                              {/* Actions */}
+                              <td className="py-2.5 px-2 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAddToCart(b);
+                                    }}
+                                    disabled={b.currentStock <= 0}
+                                    className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1 ${
+                                      b.currentStock > 0
+                                        ? 'bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer active:scale-95'
+                                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                    }`}
+                                    title="بل میں شامل کریں"
+                                  >
+                                    <Plus className="w-3.5 h-3.5" />
+                                    <span>{isUrdu ? 'کارٹ' : 'Add'}</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedBatchIdForChart(b.id);
+                                      setShowUsageTrendChart(true);
+                                    }}
+                                    className={`p-1.5 rounded-lg cursor-pointer transition-colors ${
+                                      isSelectedForChart
+                                        ? 'bg-emerald-700 text-white shadow-xs'
+                                        : 'text-slate-500 hover:bg-slate-100 hover:text-emerald-700'
+                                    }`}
+                                    title={isUrdu ? 'اس دوا کا ۳۰ روزہ کھپت گراف دیکھیں' : 'View 30-Day Trend Chart'}
+                                  >
+                                    <TrendingUp className="w-3.5 h-3.5" />
+                                  </button>
+
+                                  {forecast && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedForecastForDetail(forecast);
+                                        setIsPredictiveModalOpen(true);
+                                      }}
+                                      className="p-1.5 text-purple-700 hover:bg-purple-100 rounded-lg cursor-pointer"
+                                      title="30-Day Dispensing Analytics & Reorder PO"
+                                    >
+                                      <Activity className="w-3.5 h-3.5" />
+                                    </button>
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteBatch(b.id);
+                                    }}
+                                    className="p-1.5 text-slate-300 hover:text-rose-600 rounded-lg cursor-pointer"
+                                    title="بیچ ختم کریں"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              /* Batches Card Grid View */
+              <div className="space-y-2.5 max-h-[480px] overflow-y-auto pr-1">
+                {filteredBatches.map((b) => {
+                  const expiring = isExpiringSoon(b.expiryDate);
+                  const expired = isExpired(b.expiryDate);
+                  const isLow = b.currentStock <= b.minThreshold;
+                  const prodKey = (b.productNameEnglish || b.productNameUrdu || '').trim().toLowerCase();
+                  const isFifoFirst = fifoNearestMap[prodKey] === b.id && !expired && b.currentStock > 0;
+                  const forecast = forecastMap.get(b.id);
+                  const prediction = predictionMap.get(b.id);
+                  const isSelectedForChart = b.id === selectedBatchIdForChart;
+
+                  // Algorithmic Safe Threshold comparison
+                  const safeThreshold = prediction?.safetyStockUnits ?? forecast?.safetyStockUnits ?? (b.minThreshold || 8);
+                  const isTrending = prediction?.isTrendingTowardStockout ?? (b.currentStock <= safeThreshold && !expired);
+                  const isCriticalStockout = prediction?.stockoutRiskLevel === 'CRITICAL_STOCKOUT' || forecast?.urgency === 'CRITICAL_NOW';
+
+                  return (
+                    <div
+                      key={b.id}
+                      onClick={() => setSelectedBatchIdForChart(b.id)}
+                      className={`p-3.5 rounded-2xl border transition-all flex flex-col gap-2.5 cursor-pointer ${
+                        isSelectedForChart
+                          ? 'bg-emerald-50/90 border-emerald-500 ring-2 ring-emerald-500 shadow-md'
+                          : expired
+                          ? 'bg-rose-50 border-rose-300'
+                          : isCriticalStockout
+                          ? 'bg-rose-50/90 border-rose-400 ring-2 ring-rose-400 shadow-sm'
+                          : isTrending
+                          ? 'bg-amber-50/90 border-amber-400 ring-2 ring-amber-300/70 shadow-sm'
+                          : expiring
+                          ? 'bg-amber-50/70 border-amber-200'
+                          : isLow
+                          ? 'bg-orange-50/50 border-orange-200'
+                          : 'bg-white border-slate-200 hover:border-emerald-300'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-slate-900 text-sm">{b.productNameUrdu || b.productNameEnglish}</span>
+                            {isSelectedForChart && (
+                              <span className="text-[9px] bg-emerald-700 text-white font-bold px-1.5 py-0.2 rounded-full inline-flex items-center gap-0.5">
+                                <TrendingUp className="w-2.5 h-2.5 text-emerald-200" />
+                                <span>{isUrdu ? 'چارٹ فعال' : 'Chart Active'}</span>
+                              </span>
+                            )}
+                            {b.barcode && (
+                              <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border">
+                                {b.barcode}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-3 text-[11px] text-slate-500 font-medium">
+                            <span>بیچ: <strong>{b.batchNumber}</strong></span>
+                            <span>ریک: <strong>{b.rackLocation || 'A-1'}</strong></span>
+                            <span>
+                              ایکسپائری:{' '}
+                              <strong className={expired ? 'text-rose-600 font-black' : expiring ? 'text-amber-600 font-black' : 'text-slate-700'}>
+                                {b.expiryDate}
+                              </strong>
+                            </span>
+                          </div>
+
+                          {/* Status Badges */}
+                          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                            {/* Visual Amber/Red 'Restock Now' badge if trending toward stockout */}
+                            {isTrending && (
+                              <span className="text-[9.5px] bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-2.5 py-0.5 rounded-full shadow-xs flex items-center gap-1 border border-amber-600/40 animate-pulse">
+                                <AlertTriangle className="w-3 h-3 text-slate-950" />
+                                <span>{isUrdu ? '⚠️ ابھی ری اسٹاک کریں (Restock Now)' : '⚠️ Restock Now'}</span>
+                                <span className="text-[8.5px] bg-amber-950 text-amber-200 px-1.5 py-0.2 rounded-full font-mono font-bold">
+                                  &le; {safeThreshold} محفوظ حد
+                                </span>
+                              </span>
+                            )}
+                            {isFifoFirst && (
+                              <span className="text-[9px] bg-emerald-700 text-white font-bold px-2 py-0.5 rounded-full shadow-xs flex items-center gap-0.5">
+                                🟢 {isUrdu ? 'فیفو اولویت (FIFO Nearest Expiry)' : 'FIFO Priority (Earliest Expiry)'}
+                              </span>
+                            )}
+                            {expired && (
+                              <span className="text-[9px] bg-rose-600 text-white font-bold px-2 py-0.5 rounded-full">
+                                {isUrdu ? 'میعاد ختم (Expired)' : 'Expired'}
+                              </span>
+                            )}
+                            {expiring && !expired && (
+                              <span className="text-[9px] bg-amber-500 text-slate-950 font-bold px-2 py-0.5 rounded-full">
+                                {isUrdu ? 'جلد میعاد ختم ہوگی' : 'Expiring Soon'}
+                              </span>
+                            )}
+                            {isLow && !isTrending && (
+                              <span className="text-[9px] bg-orange-600 text-white font-bold px-2 py-0.5 rounded-full">
+                                {isUrdu ? 'کم اسٹاک الرٹ' : 'Low Stock'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <div className="text-right">
+                            <div className="text-sm font-black text-emerald-800 font-mono">Rs. {b.salePricePKR}</div>
+                            <div className="text-[11px] font-bold text-slate-500">
+                              اسٹاک:{' '}
+                              <span
+                                className={
+                                  isTrending
+                                    ? 'text-amber-950 font-black bg-amber-200/80 px-1.5 py-0.5 rounded border border-amber-300'
+                                    : isLow
+                                    ? 'text-rose-600 font-black'
+                                    : 'text-slate-900'
+                                }
+                              >
+                                {b.currentStock} یونٹ
+                              </span>
+                            </div>
+                            <div className="text-[9px] text-amber-800 font-bold mt-0.5">
+                              محفوظ حد: <strong>{safeThreshold}</strong> یونٹ
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAddToCart(b);
+                            }}
+                            disabled={b.currentStock <= 0}
+                            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1 ${
+                              b.currentStock > 0
+                                ? 'bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer active:scale-95'
+                                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                            }`}
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>{isUrdu ? 'بل میں شامل' : 'Cart'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedBatchIdForChart(b.id);
+                              setShowUsageTrendChart(true);
+                            }}
+                            className={`px-2.5 py-2 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1 cursor-pointer ${
+                              isSelectedForChart
+                                ? 'bg-emerald-700 text-white shadow-xs'
+                                : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-300'
+                            }`}
+                            title={isUrdu ? 'اس دوا کا ۳۰ روزہ کھپت گراف دیکھیں' : 'View 30-Day Trend Chart'}
+                          >
+                            <TrendingUp className="w-3.5 h-3.5" />
+                            <span>{isUrdu ? 'گراف' : 'Chart'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteBatch(b.id);
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg cursor-pointer"
+                            title="Delete Batch"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => handleAddToCart(b)}
-                        disabled={b.currentStock <= 0}
-                        className={`px-3 py-2 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1 ${
-                          b.currentStock > 0
-                            ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
-                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                        }`}
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>{isUrdu ? 'بل میں شامل' : 'Cart'}</span>
-                      </button>
+                      {/* Predictive Reorder Forecast Telemetry Strip */}
+                      {(prediction || forecast) && (
+                        <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span
+                              className={`px-2.5 py-1 rounded-lg text-[10.5px] font-black flex items-center gap-1.5 border shadow-xs ${
+                                isCriticalStockout
+                                  ? 'bg-rose-600 text-white border-rose-700 animate-pulse'
+                                  : isTrending
+                                  ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                  : 'bg-purple-50 text-purple-900 border-purple-200'
+                              }`}
+                              title={`Algorithm Details:\n• 30-Day Dispensed: ${prediction?.dispensedLast30Days ?? forecast?.dispensedLast30Days} units\n• Daily Burn Rate: ${prediction?.averageDailyBurnRate ?? forecast?.averageDailyBurnRate} units/day\n• Supplier Lead Time: ${prediction?.supplierLeadTimeDays ?? forecast?.supplierLeadTimeDays} days\n• Safety Stock Buffer: ${prediction?.safetyStockUnits ?? forecast?.safetyStockUnits} units`}
+                            >
+                              <Calendar className="w-3.5 h-3.5 text-current" />
+                              <span>
+                                {isUrdu ? 'تجویز کردہ ری آرڈر تاریخ:' : 'Reorder Date:'}{' '}
+                                <strong>{prediction?.recommendedReorderDateFormatted ?? forecast?.reorderDateFormatted}</strong>
+                                {isCriticalStockout
+                                  ? ' (🚨 فوری آرڈر!)'
+                                  : ` (${prediction?.daysUntilReorder ?? forecast?.daysUntilReorder} دن بعد)`}
+                              </span>
+                            </span>
 
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteBatch(b.id)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg"
-                        title="Delete Batch"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                            <span className="text-[10px] text-slate-500 font-bold bg-slate-50 px-2 py-0.5 rounded-md border border-slate-200 flex items-center gap-1">
+                              <TrendingUp className="w-3 h-3 text-emerald-600" />
+                              <span>۳۰ دن کھپت: <strong>{prediction?.dispensedLast30Days ?? forecast?.dispensedLast30Days}</strong> ({prediction?.averageDailyBurnRate ?? forecast?.averageDailyBurnRate}/دن)</span>
+                            </span>
+
+                            <span className="text-[10px] text-slate-500 font-bold">
+                              باقی ایام: <strong className={(prediction?.runoutDaysRemaining ?? forecast?.runoutDaysRemaining ?? 10) <= 5 ? 'text-rose-600' : 'text-slate-700'}>{prediction?.runoutDaysRemaining ?? forecast?.runoutDaysRemaining} دن</strong>
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedForecastForDetail(forecast || null);
+                              setIsPredictiveModalOpen(true);
+                            }}
+                            className="text-[10.5px] font-bold text-purple-700 hover:text-purple-950 flex items-center gap-1 bg-purple-50 hover:bg-purple-100 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Activity className="w-3 h-3 text-purple-600" />
+                            <span>{isUrdu ? 'کھپت و ری آرڈر تجزیہ' : 'Dispensing Analytics'}</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -719,8 +1464,16 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
             {/* Cart Items List */}
             <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
               {posCart.length === 0 ? (
-                <div className="text-center py-10 text-slate-500 text-xs">
-                  {isUrdu ? 'بل میں ادویات شامل کرنے کے لیے بائیں جانب کلک کریں یا بارکوڈ اسکین کریں۔' : 'Cart is empty. Scan barcode or click items.'}
+                <div className="text-center py-8 text-slate-400 text-xs space-y-2.5">
+                  <p>{isUrdu ? 'بل میں ادویات شامل کرنے کے لیے بائیں جانب کلک کریں یا بارکوڈ اسکین کریں۔' : 'Cart is empty. Scan barcode or click items.'}</p>
+                  <button
+                    type="button"
+                    onClick={() => setIsQrScannerOpen(true)}
+                    className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition-colors cursor-pointer shadow-xs"
+                  >
+                    <Camera className="w-3.5 h-3.5 text-emerald-200" />
+                    <span>{isUrdu ? '📷 کیمرہ کیو آر اسکینر کھولیں' : '📷 Open Camera QR Scanner'}</span>
+                  </button>
                 </div>
               ) : (
                 posCart.map((ci) => (
@@ -940,6 +1693,389 @@ export function SmartPharmacyPosView({ products, language, clinicSettings, curre
             </div>
           </div>
         </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* PREDICTIVE INVENTORY & REORDER INTELLIGENCE MODAL        */}
+      {/* 30-Day Dispensing Pattern Algorithm & Stockout Guard     */}
+      {/* ======================================================== */}
+      {isPredictiveModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-5xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-purple-200 overflow-hidden animate-in fade-in zoom-in duration-200">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-purple-950 via-slate-900 to-emerald-950 text-white p-5 sm:p-6 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-purple-500/20 text-purple-300 border border-purple-400/30 rounded-2xl">
+                  <Sparkles className="w-6 h-6 text-amber-300 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg sm:text-xl font-black">
+                      {isUrdu
+                        ? '🤖 پیشین گوئی انوینٹری ری آرڈر ماڈل (Predictive Reorder Algorithm)'
+                        : '🤖 Predictive Pharmacy Reorder Intelligence & Stockout Guard'}
+                    </h3>
+                    <span className="bg-amber-400 text-slate-950 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                      30-Day Telemetry
+                    </span>
+                  </div>
+                  <p className="text-xs text-purple-200 mt-1 max-w-2xl">
+                    {isUrdu
+                      ? 'گزشتہ ۳۰ ایام کے اخراجاتی پیٹرن، یومیہ کھپت کی رفتار (Burn Rate) اور سپلائر لیڈ ٹائم کی بنیاد پر اگلی "ری آرڈر تاریخ" کا خودکار حساب، تاکہ کلینک میں ضروری ادویات کا اسٹاک کبھی ختم نہ ہو۔'
+                      : 'Mathematical forecasting analyzing 30-day dispensing velocity, supplier lead time buffers, and safety margins to calculate exact Reorder Dates and avert stockouts.'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPredictiveModalOpen(false);
+                  setSelectedForecastForDetail(null);
+                }}
+                className="p-2 text-slate-400 hover:text-white bg-white/10 hover:bg-white/20 rounded-xl transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* KPI Summary Cards & Lead Time Selector */}
+            <div className="p-5 bg-slate-50 border-b border-slate-200 space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-white p-3.5 rounded-2xl border border-rose-200 shadow-xs">
+                  <div className="text-[11px] font-bold text-rose-600 flex items-center gap-1">
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>{isUrdu ? 'فوری ری آرڈر ضروری' : 'Immediate Reorder'}</span>
+                  </div>
+                  <div className="text-2xl font-black text-rose-700 mt-1">
+                    {criticalReorderCount} <span className="text-xs font-bold text-slate-500">ادویات</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">اسٹاک سیفٹی بفر سے نیچے</div>
+                </div>
+
+                <div className="bg-white p-3.5 rounded-2xl border border-amber-200 shadow-xs">
+                  <div className="text-[11px] font-bold text-amber-600 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>{isUrdu ? 'آئندہ ۷ دن میں ری آرڈر' : 'Due in ≤ 7 Days'}</span>
+                  </div>
+                  <div className="text-2xl font-black text-amber-700 mt-1">
+                    {soonReorderCount} <span className="text-xs font-bold text-slate-500">ادویات</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">مطلوبہ پیشگی آرڈر</div>
+                </div>
+
+                <div className="bg-white p-3.5 rounded-2xl border border-emerald-200 shadow-xs">
+                  <div className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+                    <TrendingUp className="w-3.5 h-3.5" />
+                    <span>{isUrdu ? '۳۰ روزہ کل کھپت' : '30-Day Dispensed'}</span>
+                  </div>
+                  <div className="text-2xl font-black text-emerald-800 mt-1">
+                    {predictiveForecasts.reduce((sum, f) => sum + f.dispensedLast30Days, 0)}{' '}
+                    <span className="text-xs font-bold text-slate-500">یونٹس</span>
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">کل مریضوں کو فراہم کردہ</div>
+                </div>
+
+                <div className="bg-white p-3.5 rounded-2xl border border-purple-200 shadow-xs flex flex-col justify-between">
+                  <div>
+                    <div className="text-[11px] font-bold text-purple-700 flex items-center gap-1">
+                      <Activity className="w-3.5 h-3.5" />
+                      <span>{isUrdu ? 'سپلائر لیڈ ٹائم بفر' : 'Supplier Lead Time'}</span>
+                    </div>
+                    <div className="flex items-center gap-1 mt-1.5">
+                      {[2, 4, 7].map((days) => (
+                        <button
+                          key={days}
+                          type="button"
+                          onClick={() => setLeadTimeDays(days)}
+                          className={`flex-1 py-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer ${
+                            leadTimeDays === days
+                              ? 'bg-purple-700 text-white border-purple-800 shadow-xs'
+                              : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border-slate-200'
+                          }`}
+                        >
+                          {days} {isUrdu ? 'دن' : 'D'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="text-[9.5px] text-slate-500 mt-1">پہنچنے کی متوقع مدت</div>
+                </div>
+              </div>
+
+              {/* Action Banner for Requisition */}
+              <div className="bg-gradient-to-r from-purple-100/80 via-emerald-50 to-teal-50 border border-purple-200 p-3.5 rounded-2xl flex flex-wrap items-center justify-between gap-3">
+                <div className="text-xs text-purple-950 font-bold flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-emerald-600 animate-ping" />
+                  <span>
+                    {isUrdu
+                      ? `کل ${totalReorderNeeded} ادویات ری آرڈر کے دائرہ کار میں شامل ہیں۔ پیشگی آرڈر کا تخمینہ: PKR ${predictiveForecasts
+                          .filter((f) => f.urgency === 'CRITICAL_NOW' || f.urgency === 'REORDER_SOON')
+                          .reduce((sum, f) => sum + f.estimatedReorderCostPKR, 0)
+                          .toLocaleString()}`
+                      : `${totalReorderNeeded} medicines flagged for replenishment. Estimated Reorder Budget: PKR ${predictiveForecasts
+                          .filter((f) => f.urgency === 'CRITICAL_NOW' || f.urgency === 'REORDER_SOON')
+                          .reduce((sum, f) => sum + f.estimatedReorderCostPKR, 0)
+                          .toLocaleString()}`}
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const itemsToReorder = predictiveForecasts.filter(
+                      (f) => f.urgency === 'CRITICAL_NOW' || f.urgency === 'REORDER_SOON'
+                    );
+                    const targetList = itemsToReorder.length > 0 ? itemsToReorder : predictiveForecasts.slice(0, 5);
+                    const html = generatePurchaseOrderHtml(targetList, clinicSettings);
+                    const win = window.open('', '_blank', 'width=900,height=1100');
+                    if (win) {
+                      win.document.open();
+                      win.document.write(html);
+                      win.document.close();
+                    }
+                  }}
+                  className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-black px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>{isUrdu ? 'آفیشل پرچیز آرڈر (PO) پرنٹ کریں' : 'Generate & Print Supplier PO Requisition'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Predictive Table */}
+            <div className="flex-1 overflow-y-auto p-5">
+              {/* Recharts LineChart for 30-Day Dispensing Volume & Seasonal Demand Spikes */}
+              {(() => {
+                const activeForecast = selectedForecastForDetail || predictiveForecasts[0];
+                const activeBatch = batches.find((b) => b.id === activeForecast?.batchId) || batches[0];
+                if (!activeBatch) return null;
+
+                return (
+                  <div className="mb-5">
+                    <React.Suspense fallback={<div className="p-8 text-center text-xs text-slate-500 font-bold">{isUrdu ? 'چارٹ لوڈ ہو رہا ہے...' : 'Loading Predictive Forecast Chart...'}</div>}>
+                      <Modal30DayLineChart
+                        batch={activeBatch}
+                        forecast={activeForecast}
+                        allBatches={batches}
+                        onSelectBatch={(batchId) => {
+                          const fc = predictiveForecasts.find((f) => f.batchId === batchId);
+                          if (fc) setSelectedForecastForDetail(fc);
+                        }}
+                        isUrdu={isUrdu}
+                      />
+                    </React.Suspense>
+                  </div>
+                );
+              })()}
+
+              <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-slate-100 text-slate-800 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="p-3">دوا کا نام و تفصیل</th>
+                      <th className="p-3 text-center">موجودہ اسٹاک</th>
+                      <th className="p-3 text-center">۳۰ دن کھپت (Burn Rate)</th>
+                      <th className="p-3 text-center">باقی ایام (Runway)</th>
+                      <th className="p-3 text-center">پیشین گوئی ری آرڈر تاریخ</th>
+                      <th className="p-3 text-center">تجویز کردہ آرڈر</th>
+                      <th className="p-3 text-center">حالت (Urgency)</th>
+                      <th className="p-3 text-center">۳۰ دن گراف</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {predictiveForecasts.map((f, idx) => {
+                      const isCritical = f.urgency === 'CRITICAL_NOW';
+                      const isSoon = f.urgency === 'REORDER_SOON';
+                      const isSelectedInModal = (selectedForecastForDetail?.batchId || predictiveForecasts[0]?.batchId) === f.batchId;
+
+                      return (
+                        <tr
+                          key={idx}
+                          onClick={() => setSelectedForecastForDetail(f)}
+                          className={`transition-all cursor-pointer ${
+                            isSelectedInModal
+                              ? 'bg-purple-100/90 ring-2 ring-purple-600 font-semibold'
+                              : isCritical
+                              ? 'bg-rose-50/70 font-semibold'
+                              : isSoon
+                              ? 'bg-amber-50/50'
+                              : 'hover:bg-slate-50'
+                          }`}
+                        >
+                          <td className="p-3 font-bold text-slate-900">
+                            <div className="flex items-center gap-1.5">
+                              <span>{f.productNameUrdu || f.productNameEnglish}</span>
+                              {isSelectedInModal && (
+                                <span className="text-[9px] bg-purple-700 text-white font-bold px-1.5 py-0.2 rounded-full inline-flex items-center gap-0.5">
+                                  <TrendingUp className="w-2.5 h-2.5 text-purple-200" />
+                                  <span>{isUrdu ? 'چارٹ فعال' : 'Chart Active'}</span>
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-500 font-normal">
+                              {f.productNameEnglish} • ریک: {f.rackLocation}
+                            </div>
+                          </td>
+
+                          <td className="p-3 text-center">
+                            <span
+                              className={`px-2 py-0.5 rounded-md font-mono font-bold ${
+                                f.currentStock <= f.safetyStockUnits
+                                  ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                  : 'bg-slate-100 text-slate-800'
+                              }`}
+                            >
+                              {f.currentStock} یونٹ
+                            </span>
+                            <div className="text-[9.5px] text-slate-400 mt-0.5">
+                              سیفٹی: {f.safetyStockUnits}
+                            </div>
+                          </td>
+
+                          <td className="p-3 text-center">
+                            <div className="font-mono font-bold text-slate-800">
+                              {f.dispensedLast30Days} <span className="text-[10px] text-slate-500 font-normal">کل</span>
+                            </div>
+                            <div className="text-[10px] text-emerald-700 font-bold">
+                              {f.averageDailyBurnRate} یونٹ/روزانہ
+                            </div>
+                          </td>
+
+                          <td className="p-3 text-center">
+                            <span
+                              className={`font-mono font-bold ${
+                                f.runoutDaysRemaining <= leadTimeDays
+                                  ? 'text-rose-600 font-black'
+                                  : f.runoutDaysRemaining <= 10
+                                  ? 'text-amber-700 font-bold'
+                                  : 'text-emerald-700'
+                              }`}
+                            >
+                              {f.runoutDaysRemaining} دن
+                            </span>
+                          </td>
+
+                          <td className="p-3 text-center">
+                            <div
+                              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black border shadow-xs ${
+                                isCritical
+                                  ? 'bg-rose-600 text-white border-rose-700 animate-pulse'
+                                  : isSoon
+                                  ? 'bg-amber-100 text-amber-950 border-amber-300'
+                                  : 'bg-emerald-50 text-emerald-900 border-emerald-200'
+                              }`}
+                            >
+                              <Calendar className="w-3.5 h-3.5" />
+                              <span>{f.reorderDateFormatted}</span>
+                            </div>
+                            <div className="text-[10px] text-slate-600 font-bold mt-0.5">
+                              {isCritical ? '🚨 آج ہی آرڈر کریں' : `${f.daysUntilReorder} دن باقی`}
+                            </div>
+                          </td>
+
+                          <td className="p-3 text-center">
+                            <div className="font-black text-purple-950">
+                              +{f.suggestedReorderUnits} یونٹ
+                            </div>
+                            <div className="text-[10px] text-slate-500">
+                              Rs. {f.estimatedReorderCostPKR.toLocaleString()}
+                            </div>
+                          </td>
+
+                          <td className="p-3 text-center">
+                            <span
+                              className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                isCritical
+                                  ? 'bg-rose-200 text-rose-950 border border-rose-300 font-black'
+                                  : isSoon
+                                  ? 'bg-amber-200 text-amber-950 border border-amber-300'
+                                  : f.urgency === 'LOW_MOVEMENT'
+                                  ? 'bg-slate-200 text-slate-700'
+                                  : 'bg-emerald-100 text-emerald-900'
+                              }`}
+                            >
+                              {isUrdu ? f.urgencyLabelUrdu : f.urgencyLabelEnglish}
+                            </span>
+                          </td>
+
+                          <td className="p-3 text-center">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedForecastForDetail(f);
+                              }}
+                              className={`px-2.5 py-1 rounded-xl text-[10.5px] font-bold transition-all flex items-center justify-center gap-1 mx-auto cursor-pointer ${
+                                isSelectedInModal
+                                  ? 'bg-purple-700 text-white shadow-xs'
+                                  : 'bg-purple-50 text-purple-800 hover:bg-purple-100 border border-purple-200'
+                              }`}
+                              title={isUrdu ? 'اس دوا کا ۳۰ روزہ یومیہ کھپت لائن چارٹ دیکھیں' : 'View 30-Day Dispensing LineChart'}
+                            >
+                              <TrendingUp className="w-3 h-3" />
+                              <span>{isUrdu ? 'گراف' : 'Chart'}</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Informational Guidance Box */}
+              <div className="mt-4 p-3.5 bg-purple-50/70 border border-purple-200 rounded-2xl text-xs text-purple-950 flex items-start gap-2.5 leading-relaxed">
+                <Sparkles className="w-4 h-4 text-purple-700 flex-shrink-0 mt-0.5" />
+                <div>
+                  <strong>{isUrdu ? 'الگورتھم کا طریقۂ کار (Algorithm Logic):' : 'Forecasting Logic:'}</strong>{' '}
+                  {isUrdu
+                    ? `یہ پیشین گوئی ماڈل فارمیسی کاؤنٹر سے گزشتہ ۳۰ ایام میں فروخت ہونے والی ادویات کے اعداد و شمار لے کر یومیہ برن ریٹ (Burn Rate) نکالتا ہے۔ اس کے بعد سپلائر لیڈ ٹائم (${leadTimeDays} دن) اور حفاظتی بفر (Safety Stock) کے تحت بالکل درست ری آرڈر تاریخ کا تعین کرتا ہے تاکہ ادویات ختم ہونے سے پہلے سپلائر کو پرچیز آرڈر ارسال ہو سکے۔`
+                    : `This algorithm extracts 30-day dispensing quantities to determine the Average Daily Consumption (ADR). Factoring in distributor lead times (${leadTimeDays} days) and safety stock cushions, it establishes the precise calendar date by which purchase orders must be dispatched to avoid stockouts.`}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-slate-100 p-4 border-t border-slate-200 flex flex-wrap justify-between items-center gap-3">
+              <div className="text-xs text-slate-500 font-medium">
+                {isUrdu ? 'ماڈل اپ ڈیٹ: ریئل ٹائم فارمیسی سیلز ٹیلی میٹری' : 'Model updated: Real-time checkout telemetry synced.'}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPredictiveModalOpen(false)}
+                  className="px-5 py-2 rounded-xl text-slate-700 bg-white border border-slate-300 font-bold text-xs hover:bg-slate-50 cursor-pointer"
+                >
+                  {isUrdu ? 'بند کریں' : 'Close'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Live Camera QR Code & Barcode Scanner Modal */}
+      {isQrScannerOpen && (
+        <React.Suspense fallback={null}>
+          <PharmacyQrScannerModal
+            isOpen={isQrScannerOpen}
+            onClose={() => setIsQrScannerOpen(false)}
+            batches={batches}
+            pendingDoctorRxList={pendingDoctorRxList}
+            onScannedPatient={(rx) => handleLoadRxIntoCart(rx)}
+            onScannedMedicine={(batch) => {
+              handleAddToCart(batch);
+              setSelectedBatchIdForChart(batch.id);
+            }}
+            onScannedRawQuery={(query) => {
+              setSearchQuery(query);
+              setBarcodeInput(query);
+            }}
+            isUrdu={isUrdu}
+          />
+        </React.Suspense>
       )}
     </div>
   );

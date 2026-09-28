@@ -1,5 +1,3 @@
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
 import { MoneySlip } from '../types';
 
 /**
@@ -50,6 +48,12 @@ export const renderHtmlToPdf = async (htmlContent: string, fileName: string): Pr
           iframeDoc.querySelector('.invoice-card') ||
           iframeDoc.querySelector('.container') ||
           iframeDoc.body;
+
+        const [{ jsPDF }, html2canvasModule] = await Promise.all([
+          import('jspdf'),
+          import('html2canvas'),
+        ]);
+        const html2canvas = (html2canvasModule as any).default || html2canvasModule;
 
         const canvas = await html2canvas(targetEl as HTMLElement, {
           window: iframeWin as any,

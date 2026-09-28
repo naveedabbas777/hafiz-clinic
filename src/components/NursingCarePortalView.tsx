@@ -281,10 +281,10 @@ export const NursingCarePortalView: React.FC<NursingCarePortalViewProps> = ({
       !isCritical &&
       (sys >= 140 || dia >= 90 || spo2 < 95 || temp >= 100.4 || pulse >= 100 || pulse < 60 || sugar >= 180 || sugar < 70);
 
-    const computedStatus: 'Normal' | 'Observation Needed' | 'Critical - Doctor Notified' = isCritical
-      ? 'Critical - Doctor Notified'
+    const computedStatus: 'Normal' | 'Urgent Review Needed' | 'Critical Doctor Alerted' = isCritical
+      ? 'Critical Doctor Alerted'
       : isWarning
-      ? 'Observation Needed'
+      ? 'Urgent Review Needed'
       : (newLog.doctorAlertStatus as any) || 'Normal';
 
     const logEntry: NursingVitalsEntry = {
@@ -937,6 +937,50 @@ export const NursingCarePortalView: React.FC<NursingCarePortalViewProps> = ({
                     />
                   </div>
                 </div>
+
+                {/* Live Fluid Balance Calculated Result */}
+                {(() => {
+                  const totalIn = (Number(newLog.intakeOralMl) || 0) + (Number(newLog.intakeIvMl) || 0);
+                  const totalOut = (Number(newLog.outputUrineMl) || 0) + (Number(newLog.outputDrainMl) || 0);
+                  const netBalance = totalIn - totalOut;
+                  const isPositive = netBalance > 300;
+                  const isNegative = netBalance < -300;
+
+                  return (
+                    <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-slate-700">
+                          {isUrdu ? 'کل انٹیک:' : 'Total Intake:'} <strong className="text-emerald-700 font-mono">{totalIn} ml</strong>
+                        </span>
+                        <span className="text-slate-300">|</span>
+                        <span className="font-bold text-slate-700">
+                          {isUrdu ? 'کل آؤٹ پٹ:' : 'Total Output:'} <strong className="text-sky-700 font-mono">{totalOut} ml</strong>
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-slate-600">{isUrdu ? 'خالص فلائیڈ بیلنس (Net Balance):' : 'Net Fluid Balance:'}</span>
+                        <span
+                          className={`font-mono font-black px-2.5 py-0.5 rounded-full text-xs ${
+                            isPositive
+                              ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                              : isNegative
+                              ? 'bg-rose-100 text-rose-900 border border-rose-300'
+                              : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                          }`}
+                        >
+                          {netBalance > 0 ? `+${netBalance}` : netBalance} ml (
+                          {isPositive
+                            ? isUrdu ? 'اضافی مائع' : 'Positive Retention'
+                            : isNegative
+                            ? isUrdu ? 'کمی / ڈیہائیڈریشن' : 'Negative Deficit'
+                            : isUrdu ? 'مکمل متوازن' : 'Balanced'}
+                          )
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Section 4: Nursing Clinical Remarks */}

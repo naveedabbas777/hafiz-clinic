@@ -44,9 +44,11 @@ import {
   Volume2,
   Sparkles,
   HeartPulse,
+  MessageCircle,
+  Mail,
 } from 'lucide-react';
 import { Appointment, Doctor, MoneySlip, MoneySlipItem } from '../types';
-import { loginApi, getReportsApi, updateReportApi, getAppointmentsApi, updateAppointmentApi } from '../services/api';
+import { loginApi, getReportsApi, updateReportApi, getAppointmentsApi, updateAppointmentApi, sendPrescriptionEmailApi } from '../services/api';
 import {
   createAutoInvoiceFromAppointment,
   addItemToPatientInvoice,
@@ -63,11 +65,13 @@ import {
 } from '../services/queueService';
 import { OPDQueueToken } from '../types';
 import { printInvoiceHtml, printPrescriptionHtml, downloadInvoicePdf, downloadPrescriptionPdf, printInvoicePdf } from '../utils/printInvoice';
-import { openWhatsAppNotification } from '../utils/notificationDispatcher';
-import { DoctorPatientChatView } from './DoctorPatientChatView';
-import { DigitalRxModal } from './DigitalRxModal';
-import { Telehealth } from './Telehealth';
+import { openWhatsAppNotification, sendPendingAppointmentWhatsApp, generatePendingAppointmentWhatsAppTemplate } from '../utils/notificationDispatcher';
 import { DigitalPrescription } from '../types';
+
+// Code-split auxiliary and modal views
+const DoctorPatientChatView = React.lazy(() => import('./DoctorPatientChatView').then((m) => ({ default: m.DoctorPatientChatView })));
+const DigitalRxModal = React.lazy(() => import('./DigitalRxModal').then((m) => ({ default: m.DigitalRxModal })));
+const Telehealth = React.lazy(() => import('./Telehealth').then((m) => ({ default: m.Telehealth })));
 
 interface DoctorPortalProps {
   appointments: Appointment[];
@@ -206,7 +210,48 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
   // Doctor Availability Toggle
   const [isOPDActive, setIsOPDActive] = useState(true);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [isDigitalRxModalOpen, setIsDigitalRxModalOpen] = useState(false);
+
+  const handleEmailPrescriptionPdf = async (rx: any) => {
+    if (!rx) return;
+    setIsSendingEmail(true);
+    try {
+      let patientEmail = rx.email || rx.patientEmail || selectedApp?.patientEmail || (selectedApp as any)?.email;
+      if (!patientEmail) {
+        patientEmail = window.prompt(
+          isUrdu
+            ? `مریض ${rx.patientName} کا ای میل ایڈریس درج کریں:`
+            : `Enter email address for patient ${rx.patientName}:`
+        );
+      }
+      if (!patientEmail || !patientEmail.trim()) {
+        setIsSendingEmail(false);
+        return;
+      }
+
+      const res = await sendPrescriptionEmailApi({
+        patientEmail: patientEmail.trim(),
+        patientName: rx.patientName,
+        doctorName: rx.doctorName || currentDoctor?.fullName,
+        prescriptionData: rx,
+      });
+
+      if (res.success) {
+        alert(
+          isUrdu
+            ? `✅ پی ڈی ایف نسخہ کامیابی سے مریض کو ای میل کر دیا گیا ہے (${res.recipient || patientEmail})۔`
+            : `✅ Prescription PDF successfully emailed to ${res.recipient || patientEmail} via Nodemailer.`
+        );
+      } else {
+        alert(res.message || 'Failed to email prescription.');
+      }
+    } catch (e: any) {
+      alert(`Email error: ${e.message}`);
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
 
   // Telehealth Video Consultation Modal State
   const [isTelehealthOpen, setIsTelehealthOpen] = useState(false);
@@ -1612,6 +1657,17 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                             <span>{isCallingThis ? (isUrdu ? 'کال ہو رہا ہے...' : 'Calling...') : (isUrdu ? '📢 پکاریں (Call)' : '📢 Call to Room')}</span>
                           </button>
 
+                          {/* Send via WhatsApp Button */}
+                          <button
+                            type="button"
+                            onClick={() => sendPendingAppointmentWhatsApp(app, isUrdu)}
+                            className="py-1 px-2 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition-all cursor-pointer active:scale-95"
+                            title={isUrdu ? 'مریض کو واٹس ایپ پر اپائنٹمنٹ تفصیلات بھیجیں' : 'Send via WhatsApp'}
+                          >
+                            <MessageCircle className="w-3 h-3 text-emerald-100" />
+                            <span>{isUrdu ? 'واٹس ایپ' : 'Send WA'}</span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => handleStartDoctorVideoCall(app)}
@@ -1736,6 +1792,15 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                           >
                             <Volume2 className="w-3 h-3" />
                             <span>{isUrdu ? 'کال' : 'Call'}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => sendPendingAppointmentWhatsApp(selectedApp, isUrdu)}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 shadow-xs cursor-pointer active:scale-95"
+                            title={isUrdu ? 'مریض کو واٹس ایپ پر تفصیلات بھیجیں' : 'Send WhatsApp Details'}
+                          >
+                            <MessageCircle className="w-3 h-3" />
+                            <span>{isUrdu ? 'واٹس ایپ' : 'WhatsApp'}</span>
                           </button>
                         </div>
                       </div>
@@ -2254,15 +2319,17 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
         {/* ==================== PAGE 3: LIVE PATIENT CONSULTATION CHAT ==================== */}
         {docPage === 'chat' && (
           <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden min-h-[680px]">
-            <DoctorPatientChatView
-              currentUser={{
-                role: 'doctor',
-                id: currentDoctor?.id || 'doc-1',
-                name: currentDoctor?.fullName || (isUrdu ? 'ڈاکٹر زیشان چوہدری' : 'Dr. Zeeshan Chaudhry'),
-              }}
-              doctors={doctors}
-              language={language}
-            />
+            <React.Suspense fallback={<div className="p-12 text-center text-slate-500 font-bold">{isUrdu ? 'چیٹ لوڈ ہو رہی ہے...' : 'Loading Telehealth Consultation Chat...'}</div>}>
+              <DoctorPatientChatView
+                currentUser={{
+                  role: 'doctor',
+                  id: currentDoctor?.id || 'doc-1',
+                  name: currentDoctor?.fullName || (isUrdu ? 'ڈاکٹر زیشان چوہدری' : 'Dr. Zeeshan Chaudhry'),
+                }}
+                doctors={doctors}
+                language={language}
+              />
+            </React.Suspense>
           </div>
         )}
 
@@ -2874,6 +2941,16 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
                 {isUrdu ? 'بند کریں' : 'Close'}
               </button>
               <button
+                disabled={isSendingEmail}
+                onClick={() => handleEmailPrescriptionPdf(selectedRxForPrint)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                title={isUrdu ? 'مریض کو ای میل پر پی ڈی ایف نسخہ بھیجیں' : 'Email PDF Prescription to Patient via Nodemailer'}
+              >
+                {isSendingEmail ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+                <span>{isSendingEmail ? (isUrdu ? 'ای میل ہو رہا ہے...' : 'Sending...') : (isUrdu ? 'مریض کو ای میل کریں' : 'Email PDF')}</span>
+              </button>
+
+              <button
                 disabled={isGeneratingPdf}
                 onClick={async () => {
                   if (selectedRxForPrint) {
@@ -2915,56 +2992,62 @@ export const DoctorPortalView: React.FC<DoctorPortalProps> = ({
 
       {/* Official Advanced Digital Rx Modal */}
       {isDigitalRxModalOpen && (
-        <DigitalRxModal
-          isOpen={isDigitalRxModalOpen}
-          onClose={() => setIsDigitalRxModalOpen(false)}
-          doctor={
-            currentDoctor || doctors[0] || {
-              id: 'doc-1',
-              nameUrdu: 'ڈاکٹر زیشان چوہدری',
-              nameEnglish: 'Dr. Zeeshan Chaudhry',
-              qualification: 'BEMS (Gold Medalist), MD',
-              specializationUrdu: 'ماہر امراض چشم و ہربل میڈیسن',
-              specializationEnglish: 'General Medicine & Vision Specialist',
-              experience: '12+ Years',
-              timingUrdu: 'صبح 9:00 تا دوپہر 2:00',
-              timingEnglish: '9:00 AM - 2:00 PM',
-              phone: '0300-1234567',
-              image: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=600',
+        <React.Suspense fallback={null}>
+          <DigitalRxModal
+            isOpen={isDigitalRxModalOpen}
+            onClose={() => setIsDigitalRxModalOpen(false)}
+            doctor={
+              currentDoctor || doctors[0] || {
+                id: 'doc-1',
+                nameUrdu: 'ڈاکٹر زیشان چوہدری',
+                nameEnglish: 'Dr. Zeeshan Chaudhry',
+                qualification: 'BEMS (Gold Medalist), MD',
+                specializationUrdu: 'ماہر امراض چشم و ہربل میڈیسن',
+                specializationEnglish: 'General Medicine & Vision Specialist',
+                experience: '12+ Years',
+                timingUrdu: 'صبح 9:00 تا دوپہر 2:00',
+                timingEnglish: '9:00 AM - 2:00 PM',
+                phone: '0300-1234567',
+                image: 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&q=80&w=600',
+              }
             }
-          }
-          initialPatient={
-            selectedApp
-              ? {
-                  name: selectedApp.patientName,
-                  phone: selectedApp.phone,
-                  age: (selectedApp as any).patientAge || 35,
-                  gender: (selectedApp as any).patientGender || 'Male',
-                  city: selectedApp.city,
-                  appointmentId: selectedApp.id,
-                }
-              : undefined
-          }
-          language={isUrdu ? 'urdu' : 'english'}
-          onSaved={(savedRx) => {
-            setIsDigitalRxModalOpen(false);
-            if (selectedApp) {
-              handleUpdateStatus(selectedApp.id || (selectedApp as any)._id, 'Completed');
+            initialPatient={
+              selectedApp
+                ? {
+                    name: selectedApp.patientName,
+                    phone: selectedApp.phone,
+                    age: (selectedApp as any).patientAge || 35,
+                    gender: (selectedApp as any).patientGender || 'Male',
+                    city: selectedApp.city,
+                    appointmentId: selectedApp.id,
+                  }
+                : undefined
             }
-          }}
-        />
+            language={isUrdu ? 'urdu' : 'english'}
+            onSaved={(savedRx) => {
+              setIsDigitalRxModalOpen(false);
+              if (selectedApp) {
+                handleUpdateStatus(selectedApp.id || (selectedApp as any)._id, 'Completed');
+              }
+            }}
+          />
+        </React.Suspense>
       )}
 
       {/* Telehealth Live WebRTC Video Consultation Screen */}
-      <Telehealth
-        isOpen={isTelehealthOpen}
-        onClose={() => setIsTelehealthOpen(false)}
-        currentUser={currentDoctor}
-        targetUser={telehealthTargetUser}
-        callerRole="doctor"
-        appointmentContext={telehealthAppointmentContext}
-        language={language}
-      />
+      {isTelehealthOpen && (
+        <React.Suspense fallback={null}>
+          <Telehealth
+            isOpen={isTelehealthOpen}
+            onClose={() => setIsTelehealthOpen(false)}
+            currentUser={currentDoctor}
+            targetUser={telehealthTargetUser}
+            callerRole="doctor"
+            appointmentContext={telehealthAppointmentContext}
+            language={language}
+          />
+        </React.Suspense>
+      )}
 
       {/* FOOTER BAR FOR DOCTOR WORKSPACE */}
       <footer className="bg-slate-900 text-slate-400 text-xs py-4 border-t border-slate-800 mt-auto">

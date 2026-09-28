@@ -213,22 +213,139 @@ export const AppointmentModal: React.FC<AppointmentModalProps> = ({
       setSubmittedAppt(newApp);
       setIsSubmitted(true);
     } else {
-      const tokenNumber = Math.floor(1 + Math.random() * 25);
+      const cleanPhone = phone.trim();
+      const phoneDigits = cleanPhone.replace(/\D/g, '');
+
+      // 1. DUPLICATE PREVENTION & UNIQUE MRN TRACKING
+      let matchedPatientId = currentUser?.id || currentUser?._id;
+      let matchedMrn = '';
+      try {
+        const patientDir = JSON.parse(localStorage.getItem('hc_patient_directory_v2') || '[]');
+        const existingPatient = patientDir.find(
+          (p: any) =>
+            (p.phoneDigits && p.phoneDigits === phoneDigits) ||
+            (p.phone && p.phone.replace(/\D/g, '') === phoneDigits) ||
+            (p.name && p.name.trim().toLowerCase() === patientName.trim().toLowerCase())
+        );
+
+        if (existingPatient) {
+          matchedPatientId = existingPatient.id || matchedPatientId;
+          matchedMrn = existingPatient.mrn;
+        } else {
+          // Register new unique MRN
+          matchedMrn = `MRN-${phoneDigits ? phoneDigits.slice(-5) : Math.floor(10000 + Math.random() * 90000)}`;
+          const newDirectoryEntry = {
+            id: matchedPatientId || `PAT-${Date.now()}`,
+            name: patientName.trim(),
+            phone: cleanPhone,
+            phoneDigits,
+            city,
+            mrn: matchedMrn,
+            registeredAt: new Date().toISOString(),
+          };
+          patientDir.unshift(newDirectoryEntry);
+          localStorage.setItem('hc_patient_directory_v2', JSON.stringify(patientDir.slice(0, 500)));
+        }
+      } catch (_) {
+        matchedMrn = `MRN-${(phoneDigits || '1001').slice(-4)}`;
+      }
+
+      // 2. SEQUENTIAL TOKEN NUMBER GENERATION (TK-101, TK-102, ...)
+      let seqNum = 101;
+      try {
+        const storedSeq = localStorage.getItem('hc_opd_sequential_token_counter');
+        if (storedSeq) {
+          seqNum = parseInt(storedSeq, 10) + 1;
+        } else {
+          const rawTokens = JSON.parse(localStorage.getItem('hc_opd_queue_tokens_v2') || '[]');
+          if (rawTokens.length > 0) {
+            const maxVal = Math.max(
+              ...rawTokens.map((t: any) => parseInt(String(t.tokenNumber || t.tokenCode || '').replace(/\D/g, ''), 10) || 100)
+            );
+            seqNum = Math.max(101, maxVal + 1);
+          }
+        }
+        localStorage.setItem('hc_opd_sequential_token_counter', String(seqNum));
+      } catch (_) {
+        seqNum = 101;
+      }
+
+      const formattedToken = `TK-${seqNum}`;
+
       const newApp = {
         id: `APP-${Math.floor(100000 + Math.random() * 900000)}`,
-        patientId: currentUser?.id || currentUser?._id || undefined,
-        patientName,
-        phone,
+        patientId: matchedPatientId,
+        patientName: patientName.trim(),
+        phone: cleanPhone,
         city,
         appointmentCategory: 'doctor_consultation' as const,
         doctorName: selectedDoctor,
         problem,
         date,
         timeSlot,
-        tokenNumber,
+        tokenNumber: seqNum,
+        tokenCode: formattedToken,
+        mrnNumber: matchedMrn,
         status: 'Pending',
         createdAt: new Date().toISOString(),
       };
+
+      // 3. AUTO-CREATE UNBILLED OPD MONEY SLIP FOR CASHIER
+      try {
+        const existingSlips = JSON.parse(localStorage.getItem('hafiz_clinic_slips_v2') || '[]');
+        const slipNo = `OPD-${Math.floor(1000 + Math.random() * 9000)}`;
+        const opdSlip = {
+          slipNo,
+          tokenNumber: formattedToken,
+          mrnNumber: matchedMrn,
+          date,
+          time: timeSlot,
+          patientName: patientName.trim(),
+          phone: cleanPhone,
+          doctorName: selectedDoctor || 'General OPD Consultant',
+          subtotal: 1000,
+          discount: 0,
+          totalAmount: 1000,
+          paidAmount: 0,
+          balanceAmount: 1000,
+          paymentMethod: 'Cash',
+          status: 'Unpaid',
+          source: 'Appointment',
+          items: [
+            {
+              description: `او پی ڈی ڈاکٹر فیس (${selectedDoctor || 'معائنہ'}) — ٹوکن: ${formattedToken}`,
+              category: 'Consultation Fee',
+              quantity: 1,
+              unitPrice: 1000,
+              totalPrice: 1000,
+              servedBy: 'Front Desk Reception',
+            },
+          ],
+        };
+        existingSlips.unshift(opdSlip);
+        localStorage.setItem('hafiz_clinic_slips_v2', JSON.stringify(existingSlips));
+      } catch (_) {}
+
+      // 4. SYNC WITH TV WAITING ROOM OPD QUEUE
+      try {
+        const currentQueue = JSON.parse(localStorage.getItem('hc_opd_queue_tokens_v2') || '[]');
+        const newQueueToken = {
+          id: `Q-TOK-${Date.now()}`,
+          tokenNumber: seqNum,
+          tokenCode: formattedToken,
+          patientName: patientName.trim(),
+          patientPhone: cleanPhone,
+          mrn: matchedMrn,
+          doctorId: selectedDoctor.includes('وقاص') ? 'doc-2' : 'doc-1',
+          doctorName: selectedDoctor,
+          department: selectedDoctor.includes('وقاص') ? 'Physiotherapy & Eye Care' : 'General OPD & Herbal',
+          status: 'Waiting',
+          issueTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        currentQueue.push(newQueueToken);
+        localStorage.setItem('hc_opd_queue_tokens_v2', JSON.stringify(currentQueue));
+        window.dispatchEvent(new CustomEvent('opd_queue_updated'));
+      } catch (_) {}
 
       if (onAddAppointment) {
         onAddAppointment(newApp);

@@ -9,26 +9,56 @@ import { Product } from '../models/Product';
 
 export const MONGODB_URI = process.env.MONGODB_URI || '';
 
-let isConnected = false;
+let lastConnectedTime: string | null = null;
+let lastError: string | null = null;
 
 export function getMongoConnectedStatus() {
-  return isConnected;
+  return mongoose.connection.readyState === 1;
 }
 
-export async function connectDB() {
+export function getMongoDiagnostics() {
+  const readyState = mongoose.connection.readyState;
+  const states: Record<number, string> = {
+    0: 'disconnected',
+    1: 'connected',
+    2: 'connecting',
+    3: 'disconnecting',
+  };
+  return {
+    connected: readyState === 1,
+    status: states[readyState] || 'unknown',
+    readyState,
+    host: mongoose.connection.host || null,
+    name: mongoose.connection.name || null,
+    lastConnectedTime,
+    lastError,
+  };
+}
+
+export async function connectDB(forceReload = false) {
+  if (forceReload) {
+    dotenv.config({ override: true });
+  }
   const uri = process.env.MONGODB_URI || MONGODB_URI;
   if (!uri) {
-    console.warn('MongoDB Atlas URI is empty in process.env.MONGODB_URI');
-    return;
+    lastError = 'MongoDB Atlas URI is empty in process.env.MONGODB_URI';
+    console.warn(lastError);
+    return false;
   }
   try {
+    if (mongoose.connection.readyState === 1) {
+      return true;
+    }
     await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
-    isConnected = true;
+    lastConnectedTime = new Date().toISOString();
+    lastError = null;
     console.log('Successfully connected to MongoDB Atlas:', uri.split('@')[1] || uri);
     await seedInitialData();
+    return true;
   } catch (err: any) {
-    isConnected = false;
-    console.error('MongoDB Atlas Connection Error:', err.message);
+    lastError = err.message || 'Unknown MongoDB connection error';
+    console.error('MongoDB Atlas Connection Error:', lastError);
+    return false;
   }
 }
 

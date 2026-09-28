@@ -665,3 +665,77 @@ export async function getCallSignalsApi(callId: string, userId: string) {
   }
 }
 
+// -------------------------------------------------------------
+// Nodemailer Automated Email API Methods
+// -------------------------------------------------------------
+
+export async function getEmailServiceStatusApi(): Promise<{
+  success: boolean;
+  status?: {
+    configured: boolean;
+    host: string;
+    user: string;
+    from: string;
+  };
+}> {
+  try {
+    const res = await fetch('/api/email/status');
+    return await res.json();
+  } catch (e: any) {
+    return { success: false };
+  }
+}
+
+export async function sendLabReportEmailApi(payload: {
+  patientEmail?: string;
+  email?: string;
+  patientName: string;
+  patientPhone?: string;
+  testName: string;
+  reportData: any;
+  customPdfBase64?: string;
+}): Promise<{
+  success: boolean;
+  message?: string;
+  recipient?: string;
+  details?: any;
+}> {
+  try {
+    const res = await fetch('/api/email/send-lab-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return await res.json();
+  } catch (e: any) {
+    return { success: false, message: e.message };
+  }
+}
+
+export async function sendPrescriptionEmailApi(payload: {
+  patientEmail?: string;
+  email?: string;
+  patientName: string;
+  patientPhone?: string;
+  doctorName?: string;
+  prescriptionData: any;
+  customPdfBase64?: string;
+}): Promise<{
+  success: boolean;
+  message?: string;
+  recipient?: string;
+  details?: any;
+}> {
+  try {
+    const res = await fetch('/api/email/send-prescription', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return await res.json();
+  } catch (e: any) {
+    return { success: false, message: e.message };
+  }
+}
+
+

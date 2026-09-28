@@ -2,10 +2,47 @@ import { Router, Request, Response } from 'express';
 import { Report } from '../models/Report';
 import { getMongoConnectedStatus } from '../config/db';
 import { deleteFromCloudinary } from '../config/cloudinary';
+import { sendLabReportCompletedEmail } from '../services/emailService';
+import { resolvePatientEmail } from './emailRoutes';
 
 const router = Router();
 
 let inMemoryReports: any[] = [];
+
+// Automatic email dispatch helper
+async function triggerLabReportEmailIfCompleted(report: any, emailOverride?: string) {
+  try {
+    const isCompleted =
+      report?.status === 'Completed' ||
+      report?.status === 'Report Ready' ||
+      report?.status === 'Ready' ||
+      report?.status === 'Reviewed';
+
+    if (!isCompleted) return;
+
+    const targetEmail =
+      emailOverride ||
+      report.email ||
+      report.patientEmail ||
+      (await resolvePatientEmail({
+        phone: report.phone || report.patientPhone,
+        patientName: report.patientName,
+        patientId: report.patientId,
+      }));
+
+    if (targetEmail) {
+      console.log(`[Auto-Email] Dispatching completed lab report to: ${targetEmail}`);
+      sendLabReportCompletedEmail({
+        recipientEmail: targetEmail,
+        patientName: report.patientName,
+        testName: report.testNameEnglish || report.testName || 'Diagnostic Lab Investigation',
+        reportData: report,
+      }).catch((err) => console.error('[Auto-Email Error] Lab report dispatch error:', err));
+    }
+  } catch (err) {
+    console.error('Error triggering lab report email:', err);
+  }
+}
 
 // GET /api/reports
 router.get('/', async (req: Request, res: Response) => {
@@ -42,8 +79,10 @@ router.post('/', async (req: Request, res: Response) => {
 
     if (getMongoConnectedStatus()) {
       const newReport = await Report.create(reportData);
+      triggerLabReportEmailIfCompleted(newReport, req.body.email || req.body.patientEmail);
       return res.status(201).json({ success: true, report: newReport });
     }
+    triggerLabReportEmailIfCompleted(reportData, req.body.email || req.body.patientEmail);
     return res.status(201).json({ success: true, report: reportData });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
@@ -64,6 +103,10 @@ router.put('/:id', async (req: Request, res: Response) => {
 
       const updated = await Report.findByIdAndUpdate(id, req.body, { returnDocument: 'after' }) ||
         await Report.findOneAndUpdate({ id }, req.body, { returnDocument: 'after' });
+
+      if (updated) {
+        triggerLabReportEmailIfCompleted(updated, req.body.email || req.body.patientEmail);
+      }
       return res.json({ success: true, report: updated });
     }
 
@@ -73,8 +116,10 @@ router.put('/:id', async (req: Request, res: Response) => {
         deleteFromCloudinary(inMemoryReports[idx].fileUrl).catch(() => {});
       }
       inMemoryReports[idx] = { ...inMemoryReports[idx], ...req.body };
+      triggerLabReportEmailIfCompleted(inMemoryReports[idx], req.body.email || req.body.patientEmail);
     }
-    return res.json({ success: true, report: inMemoryReports[idx] || { id, ...req.body } });
+    const finalReport = inMemoryReports[idx] || { id, ...req.body };
+    return res.json({ success: true, report: finalReport });
   } catch (err: any) {
     return res.status(500).json({ success: false, message: err.message });
   }

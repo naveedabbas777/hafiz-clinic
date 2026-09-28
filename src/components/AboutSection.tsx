@@ -26,9 +26,9 @@ export const AboutSection: React.FC<AboutSectionProps> = ({ settings, language =
       <div className="max-w-7xl mx-auto px-4">
         {/* Header Title */}
         <div className="text-center max-w-3xl mx-auto mb-10 space-y-3">
-          <div className="inline-flex items-center gap-2 bg-emerald-100 text-emerald-900 px-3.5 py-1 rounded-full text-xs font-black">
-            <ShieldCheck className="w-4 h-4 text-emerald-700" />
-            <span>{isUrdu ? 'پنجاب ہیلتھ کیئر سے باقاعدہ منظور شدہ' : 'PHC Officially Approved Clinic'}</span>
+          <div className="flex items-center justify-center gap-2 text-xs font-bold text-emerald-800 tracking-wider">
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            <span>{isUrdu ? 'پنجاب ہیلتھ کیئر سے باقاعدہ منظور شدہ' : 'PHC Officially Approved Healthcare Facility'}</span>
           </div>
           <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
             {isUrdu ? 'حافظ کلینک کا تعارف اور جدید سہولیات' : 'About Hafiz Clinic & Modern Facilities'}
