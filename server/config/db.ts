@@ -1,11 +1,12 @@
-import dotenv from 'dotenv';
-dotenv.config({ override: true });
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import { loadRuntimeEnv, logMissingEnvKeys } from './env';
 import { User } from '../models/User';
 import { Doctor } from '../models/Doctor';
 import { Disease } from '../models/Disease';
 import { Product } from '../models/Product';
+
+loadRuntimeEnv();
 
 export const MONGODB_URI = process.env.MONGODB_URI || '';
 
@@ -37,11 +38,14 @@ export function getMongoDiagnostics() {
 
 export async function connectDB(forceReload = false) {
   if (forceReload) {
-    dotenv.config({ override: true });
+    loadRuntimeEnv();
   }
   const uri = process.env.MONGODB_URI || MONGODB_URI;
   if (!uri) {
-    lastError = 'MongoDB Atlas URI is empty in process.env.MONGODB_URI';
+    const missing = logMissingEnvKeys(['MONGODB_URI']);
+    lastError = missing.length
+      ? `MongoDB Atlas URI is empty. Missing required deployment variables: ${missing.join(', ')}`
+      : 'MongoDB Atlas URI is empty in process.env.MONGODB_URI';
     console.warn(lastError);
     return false;
   }

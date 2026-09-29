@@ -4,6 +4,9 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __commonJS = (cb, mod) => function __require() {
+  return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+};
 var __copyProps = (to, from, except, desc) => {
   if (from && typeof from === "object" || typeof from === "function") {
     for (let key of __getOwnPropNames(from))
@@ -21,19 +24,62 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   mod
 ));
 
+// server/config/env.js
+var require_env = __commonJS({
+  "server/config/env.js"(exports2, module2) {
+    var fs = require("fs");
+    var path2 = require("path");
+    var dotenv2 = require("dotenv");
+    var REQUIRED_ENV_KEYS = ["MONGODB_URI", "JWT_SECRET", "APP_URL"];
+    function loadRuntimeEnv3(envPath = path2.resolve(process.cwd(), ".env")) {
+      if (!fs.existsSync(envPath)) {
+        console.warn(`[env] No .env file found at ${envPath}. Ensure cPanel environment variables are configured.`);
+        return false;
+      }
+      const result = dotenv2.config({ path: envPath, override: false });
+      if (result.error) {
+        console.warn(`[env] Failed to load ${envPath}: ${result.error.message}`);
+        return false;
+      }
+      return true;
+    }
+    function getMissingEnvKeys(keys = REQUIRED_ENV_KEYS) {
+      return keys.filter((key) => {
+        const value = process.env[key];
+        return value === void 0 || String(value).trim() === "";
+      });
+    }
+    function logMissingEnvKeys3(keys = REQUIRED_ENV_KEYS) {
+      const missing = getMissingEnvKeys(keys);
+      if (missing.length) {
+        console.warn(`[env] Missing required deployment variables: ${missing.join(", ")}`);
+        console.warn("[env] Add them to cPanel Environment Variables or add a project-root .env file before deployment.");
+      }
+      return missing;
+    }
+    module2.exports = {
+      REQUIRED_ENV_KEYS,
+      loadRuntimeEnv: loadRuntimeEnv3,
+      getMissingEnvKeys,
+      logMissingEnvKeys: logMissingEnvKeys3
+    };
+  }
+});
+
 // server.ts
-var import_dotenv2 = __toESM(require("dotenv"), 1);
-var import_express16 = __toESM(require("express"), 1);
-var import_path = __toESM(require("path"), 1);
+var import_dotenv = __toESM(require("dotenv"));
+var import_env2 = __toESM(require_env());
+var import_express16 = __toESM(require("express"));
+var import_path = __toESM(require("path"));
 var import_vite = require("vite");
 
 // server/config/db.ts
-var import_dotenv = __toESM(require("dotenv"), 1);
-var import_mongoose5 = __toESM(require("mongoose"), 1);
-var import_bcryptjs = __toESM(require("bcryptjs"), 1);
+var import_mongoose5 = __toESM(require("mongoose"));
+var import_bcryptjs = __toESM(require("bcryptjs"));
+var import_env = __toESM(require_env());
 
 // server/models/User.ts
-var import_mongoose = __toESM(require("mongoose"), 1);
+var import_mongoose = __toESM(require("mongoose"));
 var UserSchema = new import_mongoose.default.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true, index: true },
@@ -56,7 +102,7 @@ UserSchema.index({ role: 1, createdAt: -1 });
 var User = import_mongoose.default.models.User || import_mongoose.default.model("User", UserSchema);
 
 // server/models/Doctor.ts
-var import_mongoose2 = __toESM(require("mongoose"), 1);
+var import_mongoose2 = __toESM(require("mongoose"));
 var DoctorSchema = new import_mongoose2.default.Schema({
   nameUrdu: { type: String, required: true },
   nameEnglish: { type: String, required: true },
@@ -76,7 +122,7 @@ var DoctorSchema = new import_mongoose2.default.Schema({
 var Doctor = import_mongoose2.default.models.Doctor || import_mongoose2.default.model("Doctor", DoctorSchema);
 
 // server/models/Disease.ts
-var import_mongoose3 = __toESM(require("mongoose"), 1);
+var import_mongoose3 = __toESM(require("mongoose"));
 var DiseaseSchema = new import_mongoose3.default.Schema({
   nameUrdu: { type: String, required: true },
   nameEnglish: { type: String, required: true },
@@ -93,7 +139,7 @@ var DiseaseSchema = new import_mongoose3.default.Schema({
 var Disease = import_mongoose3.default.models.Disease || import_mongoose3.default.model("Disease", DiseaseSchema);
 
 // server/models/Product.ts
-var import_mongoose4 = __toESM(require("mongoose"), 1);
+var import_mongoose4 = __toESM(require("mongoose"));
 var ProductSchema = new import_mongoose4.default.Schema({
   nameUrdu: { type: String, required: true },
   nameEnglish: { type: String, required: true, index: true },
@@ -113,7 +159,7 @@ var ProductSchema = new import_mongoose4.default.Schema({
 var Product = import_mongoose4.default.models.Product || import_mongoose4.default.model("Product", ProductSchema);
 
 // server/config/db.ts
-import_dotenv.default.config({ override: true });
+(0, import_env.loadRuntimeEnv)();
 var MONGODB_URI = process.env.MONGODB_URI || "";
 var lastConnectedTime = null;
 var lastError = null;
@@ -140,11 +186,12 @@ function getMongoDiagnostics() {
 }
 async function connectDB(forceReload = false) {
   if (forceReload) {
-    import_dotenv.default.config({ override: true });
+    (0, import_env.loadRuntimeEnv)();
   }
   const uri = process.env.MONGODB_URI || MONGODB_URI;
   if (!uri) {
-    lastError = "MongoDB Atlas URI is empty in process.env.MONGODB_URI";
+    const missing = (0, import_env.logMissingEnvKeys)(["MONGODB_URI"]);
+    lastError = missing.length ? `MongoDB Atlas URI is empty. Missing required deployment variables: ${missing.join(", ")}` : "MongoDB Atlas URI is empty in process.env.MONGODB_URI";
     console.warn(lastError);
     return false;
   }
@@ -303,7 +350,7 @@ async function seedInitialData() {
 }
 
 // server/middleware/authMiddleware.ts
-var import_jsonwebtoken = __toESM(require("jsonwebtoken"), 1);
+var import_jsonwebtoken = __toESM(require("jsonwebtoken"));
 var JWT_SECRET = process.env.JWT_SECRET || "hafiz_clinic_jwt_secret_2026";
 function authenticateToken(req, res, next) {
   const authHeader = req.headers["authorization"];
@@ -358,11 +405,11 @@ var statusRoutes_default = router;
 
 // server/routes/authRoutes.ts
 var import_express2 = require("express");
-var import_bcryptjs2 = __toESM(require("bcryptjs"), 1);
-var import_jsonwebtoken2 = __toESM(require("jsonwebtoken"), 1);
+var import_bcryptjs2 = __toESM(require("bcryptjs"));
+var import_jsonwebtoken2 = __toESM(require("jsonwebtoken"));
 
 // server/models/Appointment.ts
-var import_mongoose6 = __toESM(require("mongoose"), 1);
+var import_mongoose6 = __toESM(require("mongoose"));
 var AppointmentSchema = new import_mongoose6.default.Schema({
   id: { type: String, index: true },
   patientName: { type: String, required: true },
@@ -1081,10 +1128,10 @@ var productRoutes_default = router5;
 
 // server/routes/appointmentRoutes.ts
 var import_express7 = require("express");
-var import_mongoose8 = __toESM(require("mongoose"), 1);
+var import_mongoose8 = __toESM(require("mongoose"));
 
 // server/models/MoneySlip.ts
-var import_mongoose7 = __toESM(require("mongoose"), 1);
+var import_mongoose7 = __toESM(require("mongoose"));
 var MoneySlipSchema = new import_mongoose7.default.Schema({
   id: { type: String, index: true },
   slipNo: { type: String, required: true, index: true },
@@ -1123,7 +1170,7 @@ MoneySlipSchema.index({ doctorName: 1, date: -1 });
 var MoneySlip = import_mongoose7.default.models.MoneySlip || import_mongoose7.default.model("MoneySlip", MoneySlipSchema);
 
 // server/services/emailService.ts
-var import_nodemailer = __toESM(require("nodemailer"), 1);
+var import_nodemailer = __toESM(require("nodemailer"));
 var import_jspdf = require("jspdf");
 var hasRealCredentials = Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
 var transporter = hasRealCredentials ? import_nodemailer.default.createTransport({
@@ -2016,10 +2063,10 @@ var appointmentRoutes_default = router7;
 
 // server/routes/orderRoutes.ts
 var import_express8 = require("express");
-var import_mongoose10 = __toESM(require("mongoose"), 1);
+var import_mongoose10 = __toESM(require("mongoose"));
 
 // server/models/Order.ts
-var import_mongoose9 = __toESM(require("mongoose"), 1);
+var import_mongoose9 = __toESM(require("mongoose"));
 var OrderSchema = new import_mongoose9.default.Schema({
   customerName: { type: String, required: true },
   phone: { type: String, required: true, index: true },
@@ -2189,7 +2236,7 @@ var orderRoutes_default = router8;
 
 // server/routes/userRoutes.ts
 var import_express9 = require("express");
-var import_bcryptjs3 = __toESM(require("bcryptjs"), 1);
+var import_bcryptjs3 = __toESM(require("bcryptjs"));
 var router9 = (0, import_express9.Router)();
 var inMemoryUsers2 = [
   {
@@ -2340,7 +2387,7 @@ var userRoutes_default = router9;
 var import_express10 = require("express");
 
 // server/models/Message.ts
-var import_mongoose11 = __toESM(require("mongoose"), 1);
+var import_mongoose11 = __toESM(require("mongoose"));
 var MessageSchema = new import_mongoose11.default.Schema({
   id: { type: String },
   senderId: { type: String, required: true },
@@ -2570,7 +2617,7 @@ var messageRoutes_default = router10;
 var import_express11 = require("express");
 
 // server/models/Report.ts
-var import_mongoose12 = __toESM(require("mongoose"), 1);
+var import_mongoose12 = __toESM(require("mongoose"));
 var ReportSchema = new import_mongoose12.default.Schema({
   patientId: { type: String, required: true },
   patientName: { type: String, required: true },
@@ -2885,7 +2932,7 @@ var callRoutes_default = router13;
 
 // server/routes/slipRoutes.ts
 var import_express14 = require("express");
-var import_mongoose13 = __toESM(require("mongoose"), 1);
+var import_mongoose13 = __toESM(require("mongoose"));
 var router14 = (0, import_express14.Router)();
 var inMemorySlips = [
   {
@@ -5510,8 +5557,10 @@ Sitemap: ${resolvedDomain}/sitemap.xml
 }
 
 // server.ts
-import_dotenv2.default.config({ override: true });
+import_dotenv.default.config({ override: true });
 var PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3e3;
+(0, import_env2.loadRuntimeEnv)();
+(0, import_env2.logMissingEnvKeys)(["MONGODB_URI", "JWT_SECRET", "APP_URL"]);
 async function startServer() {
   const app = (0, import_express16.default)();
   app.use(import_express16.default.json({ limit: "50mb" }));

@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 dotenv.config({ override: true });
+import { loadRuntimeEnv, logMissingEnvKeys } from './server/config/env';
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
@@ -25,6 +26,9 @@ import emailRoutes from './server/routes/emailRoutes';
 import { generateSitemapXml, generateRobotsTxt } from './src/services/sitemapGenerator';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+
+loadRuntimeEnv();
+logMissingEnvKeys(['MONGODB_URI', 'JWT_SECRET', 'APP_URL']);
 
 async function startServer() {
   const app = express();
