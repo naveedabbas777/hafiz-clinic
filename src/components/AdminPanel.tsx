@@ -10,6 +10,7 @@ import { getLocalStaffUsers, saveLocalStaffUsers, HOSPITAL_RBAC_RULES, RBACRuleD
 import { AdminGlobalSearchModal } from './AdminGlobalSearchModal';
 import { AdminAuditLogsSection } from './AdminAuditLogsSection';
 import { logCriticalOperation } from '../services/auditLoggerService';
+import { exportAppointmentsToCsv, exportOrdersToCsv } from '../utils/csvExporter';
 
 // Code-split heavy clinical views to prevent bloat in Admin bundle
 const DoctorPatientChatView = React.lazy(() => import('./DoctorPatientChatView').then((m) => ({ default: m.DoctorPatientChatView })));
@@ -4504,9 +4505,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {/* Orders Tab */}
         {activeTab === 'orders' && (
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4 text-slate-900">
-            <h3 className="font-bold text-base text-emerald-900">
-              {isUrdu ? 'آن لائن آرڈرز کی فہرست (Customer Orders)' : 'Received Customer Store Orders'}
-            </h3>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-bold text-base text-emerald-900">
+                  {isUrdu ? 'آن لائن آرڈرز کی فہرست (Customer Orders)' : 'Received Customer Store Orders'}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {isUrdu ? 'سٹور آرڈرز کی کل تعداد اور تفصیلی ریکارڈ' : `Total ${orders.length} orders recorded across herbal pharmacy store`}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => exportOrdersToCsv(orders)}
+                className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all cursor-pointer shrink-0"
+                title={isUrdu ? 'آرڈرز CSV فائل ڈاؤن لوڈ کریں' : 'Export Orders to CSV for Accounting'}
+              >
+                <Download className="w-4 h-4" />
+                <span>{isUrdu ? 'ایکسپورٹ CSV' : 'Export to CSV'}</span>
+              </button>
+            </div>
             <div className="overflow-x-auto text-xs">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -4572,6 +4590,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     className="w-full bg-slate-50 border border-slate-300 pl-9 pr-3 py-2 rounded-xl text-xs text-slate-900 placeholder-slate-400 font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const filtered = appointments.filter((app) => {
+                      if (appointmentStatusFilter !== 'All' && app.status !== appointmentStatusFilter) {
+                        return false;
+                      }
+                      if (!appointmentSearch.trim()) return true;
+                      const q = appointmentSearch.toLowerCase();
+                      return (
+                        (app.patientName && app.patientName.toLowerCase().includes(q)) ||
+                        (app.phone && app.phone.includes(q)) ||
+                        (app.doctorName && app.doctorName.toLowerCase().includes(q)) ||
+                        (app.city && app.city.toLowerCase().includes(q)) ||
+                        (app.problem && app.problem.toLowerCase().includes(q))
+                      );
+                    });
+                    exportAppointmentsToCsv(filtered);
+                  }}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 border border-slate-300 transition-all shrink-0 cursor-pointer"
+                  title={isUrdu ? 'اپائنٹمنٹس CSV ڈاؤن لوڈ کریں' : 'Export Appointments to CSV for Financial & Patient Reports'}
+                >
+                  <Download className="w-4 h-4 text-emerald-700" />
+                  <span>{isUrdu ? 'ایکسپورٹ CSV' : 'Export to CSV'}</span>
+                </button>
 
                 <button
                   onClick={() => {
