@@ -29,14 +29,23 @@ var require_env = __commonJS({
   "server/config/env.js"(exports2, module2) {
     var fs = require("fs");
     var path2 = require("path");
-    var dotenv2 = require("dotenv");
+    var dotenv = require("dotenv");
     var REQUIRED_ENV_KEYS = ["MONGODB_URI", "JWT_SECRET", "APP_URL"];
-    function loadRuntimeEnv3(envPath = path2.resolve(process.cwd(), ".env")) {
+    var envLoadAttempted = false;
+    var missingEnvFileWarningShown = false;
+    function loadRuntimeEnv2(envPath = path2.resolve(process.cwd(), ".env")) {
+      if (envLoadAttempted) {
+        return fs.existsSync(envPath);
+      }
+      envLoadAttempted = true;
       if (!fs.existsSync(envPath)) {
-        console.warn(`[env] No .env file found at ${envPath}. Ensure cPanel environment variables are configured.`);
+        if (!missingEnvFileWarningShown) {
+          console.warn(`[env] No .env file found at ${envPath}. Ensure cPanel environment variables are configured.`);
+          missingEnvFileWarningShown = true;
+        }
         return false;
       }
-      const result = dotenv2.config({ path: envPath, override: false });
+      const result = dotenv.config({ path: envPath, override: false });
       if (result.error) {
         console.warn(`[env] Failed to load ${envPath}: ${result.error.message}`);
         return false;
@@ -49,7 +58,7 @@ var require_env = __commonJS({
         return value === void 0 || String(value).trim() === "";
       });
     }
-    function logMissingEnvKeys3(keys = REQUIRED_ENV_KEYS) {
+    function logMissingEnvKeys2(keys = REQUIRED_ENV_KEYS) {
       const missing = getMissingEnvKeys(keys);
       if (missing.length) {
         console.warn(`[env] Missing required deployment variables: ${missing.join(", ")}`);
@@ -57,18 +66,29 @@ var require_env = __commonJS({
       }
       return missing;
     }
+    function normalizeMongoUri2(value) {
+      let uri = String(value || "").trim();
+      uri = uri.replace(/^MONGODB_URI\s*=\s*/i, "").trim();
+      if (uri.startsWith('"') && uri.endsWith('"') || uri.startsWith("'") && uri.endsWith("'")) {
+        uri = uri.slice(1, -1).trim();
+      }
+      return uri;
+    }
+    function isMongoUri2(value) {
+      return /^(mongodb|mongodb\+srv):\/\//i.test(normalizeMongoUri2(value));
+    }
     module2.exports = {
       REQUIRED_ENV_KEYS,
-      loadRuntimeEnv: loadRuntimeEnv3,
+      loadRuntimeEnv: loadRuntimeEnv2,
       getMissingEnvKeys,
-      logMissingEnvKeys: logMissingEnvKeys3
+      logMissingEnvKeys: logMissingEnvKeys2,
+      normalizeMongoUri: normalizeMongoUri2,
+      isMongoUri: isMongoUri2
     };
   }
 });
 
 // server.ts
-var import_dotenv = __toESM(require("dotenv"));
-var import_env2 = __toESM(require_env());
 var import_express16 = __toESM(require("express"));
 var import_path = __toESM(require("path"));
 var import_vite = require("vite");
@@ -188,11 +208,16 @@ async function connectDB(forceReload = false) {
   if (forceReload) {
     (0, import_env.loadRuntimeEnv)();
   }
-  const uri = process.env.MONGODB_URI || MONGODB_URI;
+  const uri = (0, import_env.normalizeMongoUri)(process.env.MONGODB_URI || MONGODB_URI);
   if (!uri) {
     const missing = (0, import_env.logMissingEnvKeys)(["MONGODB_URI"]);
     lastError = missing.length ? `MongoDB Atlas URI is empty. Missing required deployment variables: ${missing.join(", ")}` : "MongoDB Atlas URI is empty in process.env.MONGODB_URI";
     console.warn(lastError);
+    return false;
+  }
+  if (!(0, import_env.isMongoUri)(uri)) {
+    lastError = "MONGODB_URI has an invalid format. It must start with mongodb:// or mongodb+srv://. In cPanel, enter only the URI as the value, without MONGODB_URI= or surrounding quotes.";
+    console.error(`[env] ${lastError}`);
     return false;
   }
   try {
@@ -202,7 +227,7 @@ async function connectDB(forceReload = false) {
     await import_mongoose5.default.connect(uri, { serverSelectionTimeoutMS: 5e3 });
     lastConnectedTime = (/* @__PURE__ */ new Date()).toISOString();
     lastError = null;
-    console.log("Successfully connected to MongoDB Atlas:", uri.split("@")[1] || uri);
+    console.log("Successfully connected to MongoDB Atlas.");
     await seedInitialData();
     return true;
   } catch (err) {
@@ -370,13 +395,13 @@ function authenticateToken(req, res, next) {
 var import_express = require("express");
 var router = (0, import_express.Router)();
 router.get("/db-status", (req, res) => {
-  const rawUri = process.env.MONGODB_URI || MONGODB_URI || "";
-  const maskedUri = rawUri.replace(/mongodb\+srv:\/\/([^:]+):([^@]+)@/, "mongodb+srv://$1:****@");
+  const rawUri = (process.env.MONGODB_URI || MONGODB_URI || "").trim();
   const diag = getMongoDiagnostics();
   res.json({
     connected: getMongoConnectedStatus(),
     database: diag,
-    uri: maskedUri,
+    mongoUriConfigured: Boolean(rawUri),
+    mongoUriSchemeValid: /^(mongodb|mongodb\+srv):\/\//i.test(rawUri.replace(/^MONGODB_URI\s*=\s*/i, "").replace(/^['"]|['"]$/g, "")),
     cloudinaryConfigured: Boolean(process.env.CLOUDINARY_CLOUD_NAME),
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || "",
     environment: process.env.NODE_ENV || "development",
@@ -5557,10 +5582,7 @@ Sitemap: ${resolvedDomain}/sitemap.xml
 }
 
 // server.ts
-import_dotenv.default.config({ override: true });
 var PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3e3;
-(0, import_env2.loadRuntimeEnv)();
-(0, import_env2.logMissingEnvKeys)(["MONGODB_URI", "JWT_SECRET", "APP_URL"]);
 async function startServer() {
   const app = (0, import_express16.default)();
   app.use(import_express16.default.json({ limit: "50mb" }));

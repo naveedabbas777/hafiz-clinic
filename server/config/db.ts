@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
-import { loadRuntimeEnv, logMissingEnvKeys } from './env';
+import { isMongoUri, loadRuntimeEnv, logMissingEnvKeys, normalizeMongoUri } from './env';
 import { User } from '../models/User';
 import { Doctor } from '../models/Doctor';
 import { Disease } from '../models/Disease';
@@ -40,13 +40,18 @@ export async function connectDB(forceReload = false) {
   if (forceReload) {
     loadRuntimeEnv();
   }
-  const uri = process.env.MONGODB_URI || MONGODB_URI;
+  const uri = normalizeMongoUri(process.env.MONGODB_URI || MONGODB_URI);
   if (!uri) {
     const missing = logMissingEnvKeys(['MONGODB_URI']);
     lastError = missing.length
       ? `MongoDB Atlas URI is empty. Missing required deployment variables: ${missing.join(', ')}`
       : 'MongoDB Atlas URI is empty in process.env.MONGODB_URI';
     console.warn(lastError);
+    return false;
+  }
+  if (!isMongoUri(uri)) {
+    lastError = 'MONGODB_URI has an invalid format. It must start with mongodb:// or mongodb+srv://. In cPanel, enter only the URI as the value, without MONGODB_URI= or surrounding quotes.';
+    console.error(`[env] ${lastError}`);
     return false;
   }
   try {
@@ -56,7 +61,7 @@ export async function connectDB(forceReload = false) {
     await mongoose.connect(uri, { serverSelectionTimeoutMS: 5000 });
     lastConnectedTime = new Date().toISOString();
     lastError = null;
-    console.log('Successfully connected to MongoDB Atlas:', uri.split('@')[1] || uri);
+    console.log('Successfully connected to MongoDB Atlas.');
     await seedInitialData();
     return true;
   } catch (err: any) {

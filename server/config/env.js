@@ -3,10 +3,20 @@ const path = require('path');
 const dotenv = require('dotenv');
 
 const REQUIRED_ENV_KEYS = ['MONGODB_URI', 'JWT_SECRET', 'APP_URL'];
+let envLoadAttempted = false;
+let missingEnvFileWarningShown = false;
 
 function loadRuntimeEnv(envPath = path.resolve(process.cwd(), '.env')) {
+  if (envLoadAttempted) {
+    return fs.existsSync(envPath);
+  }
+  envLoadAttempted = true;
+
   if (!fs.existsSync(envPath)) {
-    console.warn(`[env] No .env file found at ${envPath}. Ensure cPanel environment variables are configured.`);
+    if (!missingEnvFileWarningShown) {
+      console.warn(`[env] No .env file found at ${envPath}. Ensure cPanel environment variables are configured.`);
+      missingEnvFileWarningShown = true;
+    }
     return false;
   }
 
@@ -38,9 +48,24 @@ function logMissingEnvKeys(keys = REQUIRED_ENV_KEYS) {
   return missing;
 }
 
+function normalizeMongoUri(value) {
+  let uri = String(value || '').trim();
+  uri = uri.replace(/^MONGODB_URI\s*=\s*/i, '').trim();
+  if ((uri.startsWith('"') && uri.endsWith('"')) || (uri.startsWith("'") && uri.endsWith("'"))) {
+    uri = uri.slice(1, -1).trim();
+  }
+  return uri;
+}
+
+function isMongoUri(value) {
+  return /^(mongodb|mongodb\+srv):\/\//i.test(normalizeMongoUri(value));
+}
+
 module.exports = {
   REQUIRED_ENV_KEYS,
   loadRuntimeEnv,
   getMissingEnvKeys,
   logMissingEnvKeys,
+  normalizeMongoUri,
+  isMongoUri,
 };

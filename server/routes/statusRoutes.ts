@@ -5,13 +5,13 @@ const router = Router();
 
 // GET /api/db-status - Live health status and diagnostics
 router.get('/db-status', (req: Request, res: Response) => {
-  const rawUri = process.env.MONGODB_URI || MONGODB_URI || '';
-  const maskedUri = rawUri.replace(/mongodb\+srv:\/\/([^:]+):([^@]+)@/, 'mongodb+srv://$1:****@');
+  const rawUri = (process.env.MONGODB_URI || MONGODB_URI || '').trim();
   const diag = getMongoDiagnostics();
   res.json({
     connected: getMongoConnectedStatus(),
     database: diag,
-    uri: maskedUri,
+    mongoUriConfigured: Boolean(rawUri),
+    mongoUriSchemeValid: /^(mongodb|mongodb\+srv):\/\//i.test(rawUri.replace(/^MONGODB_URI\s*=\s*/i, '').replace(/^['"]|['"]$/g, '')),
     cloudinaryConfigured: Boolean(process.env.CLOUDINARY_CLOUD_NAME),
     cloudName: process.env.CLOUDINARY_CLOUD_NAME || '',
     environment: process.env.NODE_ENV || 'development',
