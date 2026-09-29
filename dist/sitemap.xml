@@ -1,0 +1,555 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://hafizclinic.com/</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.00</priority>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#services</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.90</priority>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#eyecare</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#physiotherapy</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#appointment</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#lab-reports</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.80</priority>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#patient-portal</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.75</priority>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#faq</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.70</priority>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#store</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.90</priority>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#store?product=prod-1</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.80</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1608248597260-1e43d7907572?auto=format&amp;fit=crop&amp;q=80&amp;w=600</image:loc>
+      <image:title>Hoorab Herbal Hair Oil (hair)</image:title>
+      <image:caption>ہوراب ہربل ہیئر آئل</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#store?product=prod-2</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.80</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&amp;fit=crop&amp;q=80&amp;w=600</image:loc>
+      <image:title>Hoorab Beauty Cream (skin)</image:title>
+      <image:caption>ہوراب بیوٹی کریم (گلو وائٹننگ کیئر)</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#store?product=prod-3</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.80</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1617897903246-719242758050?auto=format&amp;fit=crop&amp;q=80&amp;w=600</image:loc>
+      <image:title>Hafiz Joint Pain Oil &amp; Relief Balm (pain)</image:title>
+      <image:caption>حافظ جوائنٹ پین ریلیف آئل و کریم</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#store?product=prod-4</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.80</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1591076482161-42ce6da69f67?auto=format&amp;fit=crop&amp;q=80&amp;w=600</image:loc>
+      <image:title>Blue Cut Glasses for Computer &amp; Mobile (eye)</image:title>
+      <image:caption>بلیو کٹ کمپیوٹر پروٹیکشن گلاسز (Blue Cut Glasses)</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#store?product=prod-5</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.80</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1572635196237-14b3f281503f?auto=format&amp;fit=crop&amp;q=80&amp;w=600</image:loc>
+      <image:title>Reading &amp; Distance Anti-Reflective Glasses (eye)</image:title>
+      <image:caption>ریڈنگ اینڈ ڈسٹنس اینٹی ریفلیکشن گلاسز</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#store?product=prod-6</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.80</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&amp;fit=crop&amp;q=80&amp;w=600</image:loc>
+      <image:title>Soft Colored Contact Lenses (Monthly/Yearly) (eye)</image:title>
+      <image:caption>کلر کانٹیکٹ لینز کٹ (Soft Color Lenses)</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#store?product=prod-7</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.80</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1511499767150-a48a237f0083?auto=format&amp;fit=crop&amp;q=80&amp;w=600</image:loc>
+      <image:title>Polarized UV400 Sunglasses Collection (eye)</image:title>
+      <image:caption>یو وی پروٹیکشن سن گلاسز (Men &amp; Women)</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#store?product=prod-8</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.80</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1594035910387-fea47794261f?auto=format&amp;fit=crop&amp;q=80&amp;w=600</image:loc>
+      <image:title>Royal Oud Luxury Perfume (50ml) (perfume)</image:title>
+      <image:caption>حافظ شاہی عود پرفیوم (Royal Oud Perfume 50ml)</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#store?product=prod-9</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.80</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1547887537-6158d64c35b3?auto=format&amp;fit=crop&amp;q=80&amp;w=600</image:loc>
+      <image:title>Alcohol-Free Musk &amp; Rose Attar Set (12ml) (perfume)</image:title>
+      <image:caption>خالص سفید مسک و روز عطر کٹ (Pure Musk &amp; Rose Attar 12ml)</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.90</priority>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-1</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Body Pain — Diagnosis &amp; Treatment</image:title>
+      <image:caption>جسمانی درد — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-2</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Joint Pain (Arthritis) — Diagnosis &amp; Treatment</image:title>
+      <image:caption>جوڑوں کا درد — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-3</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Knee Pain — Diagnosis &amp; Treatment</image:title>
+      <image:caption>گھٹنوں کا درد — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-4</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1519823551278-64ac92734fb1?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Back Pain &amp; Disc Problem — Diagnosis &amp; Treatment</image:title>
+      <image:caption>کمر درد و مہرے — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-5</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Neck Pain (Cervical Spondylosis) — Diagnosis &amp; Treatment</image:title>
+      <image:caption>گردن درد (Cervical) — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-6</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1516549655169-df83a0774514?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Shoulder Pain &amp; Frozen Shoulder — Diagnosis &amp; Treatment</image:title>
+      <image:caption>کندھے کا درد (Frozen Shoulder) — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-7</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1532938911079-1b06ac7ceec7?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Hand &amp; Leg Pain — Diagnosis &amp; Treatment</image:title>
+      <image:caption>ہاتھوں اور ٹانگوں کا درد — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-8</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1516549655169-df83a0774514?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Heel Pain — Diagnosis &amp; Treatment</image:title>
+      <image:caption>ایڑی کا درد (Plantar Fasciitis) — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-9</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1559757175-5700dde675bc?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Nerve Weakness / Neuropathy — Diagnosis &amp; Treatment</image:title>
+      <image:caption>اعصابی کمزوری — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-10</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Numbness in Hands &amp; Feet — Diagnosis &amp; Treatment</image:title>
+      <image:caption>ہاتھ پاؤں سن ہونا — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-11</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Tremors / Parkinsonism — Diagnosis &amp; Treatment</image:title>
+      <image:caption>رعشہ (Parkinson&apos;s / Tremors) — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-12</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Paralysis &amp; Stroke — Diagnosis &amp; Treatment</image:title>
+      <image:caption>فالج (Paralysis / Stroke Rehab) — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-13</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Facial Paralysis (Bell&apos;s Palsy) — Diagnosis &amp; Treatment</image:title>
+      <image:caption>لقوہ (Facial Paralysis / Bell&apos;s Palsy) — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-14</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1530497610245-94d3c16cda28?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Kidney Stones — Diagnosis &amp; Treatment</image:title>
+      <image:caption>گردے کی پتھری — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-15</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Kidney Infection &amp; Nephritis — Diagnosis &amp; Treatment</image:title>
+      <image:caption>گردے کی سوزش و انفیکشن — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-16</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1505576399279-565b52d4ac71?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Urinary Tract Burning &amp; Frequency — Diagnosis &amp; Treatment</image:title>
+      <image:caption>پیشاب کی جلن و بار بار پیشاب — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-17</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1505576399279-565b52d4ac71?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Stomach Gas, Acidity &amp; GERD — Diagnosis &amp; Treatment</image:title>
+      <image:caption>معدہ، گیس اور تیزابیت — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-18</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1512069772995-ec65ed45afd6?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Chronic Constipation &amp; Indigestion — Diagnosis &amp; Treatment</image:title>
+      <image:caption>دائمی قبض و بدہضمی — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-19</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Piles, Hemorrhoids &amp; Fissure — Diagnosis &amp; Treatment</image:title>
+      <image:caption>بواسیر و فشر (Piles &amp; Fissure) — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-20</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1506126613408-eca07ce68773?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Male Vitality &amp; Weakness — Diagnosis &amp; Treatment</image:title>
+      <image:caption>مردانہ کمزوری — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-21</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1505576399279-565b52d4ac71?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Premature Ejaculation &amp; Spermatorrhea — Diagnosis &amp; Treatment</image:title>
+      <image:caption>سرعت انزال، جریان و احتلام — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-22</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1516549655169-df83a0774514?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Leucorrhea &amp; White Discharge — Diagnosis &amp; Treatment</image:title>
+      <image:caption>لیکوریا (Leucorrhea) — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-23</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Infertility &amp; PCOS — Diagnosis &amp; Treatment</image:title>
+      <image:caption>بانجھ پن (Female Infertility) — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-24</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1532938911079-1b06ac7ceec7?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Menstrual Disorders — Diagnosis &amp; Treatment</image:title>
+      <image:caption>ماہواری کی خرابی (Menstrual Irregularities) — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-25</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1579684385127-1ef15d508118?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Diabetes Control &amp; Management — Diagnosis &amp; Treatment</image:title>
+      <image:caption>شوگر (Diabetes Mellitus) — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-26</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1576091160550-2173dba999ef?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>High Blood Pressure — Diagnosis &amp; Treatment</image:title>
+      <image:caption>بلڈ پریشر (Hypertension) — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-27</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1584515979956-d9f6e5d09982?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Asthma, Allergy &amp; Breathing Problems — Diagnosis &amp; Treatment</image:title>
+      <image:caption>دمہ، دمہ و الرجی — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-28</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1505576399279-565b52d4ac71?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Jaundice, Hepatitis &amp; Fatty Liver — Diagnosis &amp; Treatment</image:title>
+      <image:caption>یرقان و جگر کی خرابی (Jaundice &amp; Fatty Liver) — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-29</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1512290900673-2070e6a8d6f9?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Skin Diseases, Eczema &amp; Psoriasis — Diagnosis &amp; Treatment</image:title>
+      <image:caption>جلدی امراض (Skin Diseases &amp; Eczema) — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#diseases?disease=dis-30</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1502086223501-7ea6ecd79368?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Pediatric Health &amp; Growth Issue — Diagnosis &amp; Treatment</image:title>
+      <image:caption>بچوں کی بیماریاں (Pediatric Diseases) — تشخیص و علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#articles</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.90</priority>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#articles?article=art-1</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.80</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>5 Natural Ways to Relief Joint &amp; Knee Pain</image:title>
+      <image:caption>جوڑوں اور گھٹنوں کے درد سے نجات کے 5 قدرتی طریقے</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#articles?article=art-2</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.80</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1509042239860-f550ce710b93?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Protecting Eyes from Mobile &amp; Computer Blue Light</image:title>
+      <image:caption>موبائل اور کمپیوٹر کی بلیو لائٹ سے آنکھوں کی حفاظت کا طریقہ</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#articles?article=art-3</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.80</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1516549655169-df83a0774514?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Importance of Computerized Body Scan &amp; Quantum Diagnosis</image:title>
+      <image:caption>کمپیوٹرائزڈ باڈی اسکین اور کوانٹم چیک اپ کی اہمیت</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#articles?article=art-4</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.80</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1505576399279-565b52d4ac71?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Natural Remedies for Gastric Acidity, Bloating &amp; Liver Heat</image:title>
+      <image:caption>معدے کی تیزابیت، گیس اور جگر کی گرمی کا قدرتی علاج</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://hafizclinic.com/#articles?article=art-5</loc>
+    <lastmod>2026-09-28</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.80</priority>
+    <image:image>
+      <image:loc>https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&amp;fit=crop&amp;q=80&amp;w=800</image:loc>
+      <image:title>Root Causes of Hair Loss &amp; Benefits of Hoorab Herbal Oil</image:title>
+      <image:caption>بال گرنے کی بنیادی وجوہات اور ہوراب ہیئر آئل کی افادیت</image:caption>
+    </image:image>
+  </url>
+</urlset>
