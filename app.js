@@ -5,9 +5,10 @@
 
 process.env.NODE_ENV = process.env.NODE_ENV || 'production';
 
-// Load compiled backend bundle
+// Load compiled backend bundle. The project is ESM (`"type": "module"`), so
+// the startup file must use `import` rather than CommonJS `require`.
 try {
-  require('./dist/server.cjs');
+  await import('./dist/server.cjs');
 } catch (err) {
   console.error('Failed to start Hafiz Clinic server on Namecheap cPanel:', err);
   process.exit(1);
