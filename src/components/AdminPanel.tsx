@@ -8,6 +8,8 @@ import { openWhatsAppNotification, sendPendingAppointmentWhatsApp, generatePendi
 import { LoadingFallback } from './LoadingFallback';
 import { getLocalStaffUsers, saveLocalStaffUsers, HOSPITAL_RBAC_RULES, RBACRuleDefinition } from '../data/staffData';
 import { AdminGlobalSearchModal } from './AdminGlobalSearchModal';
+import { AdminAuditLogsSection } from './AdminAuditLogsSection';
+import { logCriticalOperation } from '../services/auditLoggerService';
 
 // Code-split heavy clinical views to prevent bloat in Admin bundle
 const DoctorPatientChatView = React.lazy(() => import('./DoctorPatientChatView').then((m) => ({ default: m.DoctorPatientChatView })));
@@ -91,6 +93,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     | 'appointments'
     | 'articles'
     | 'settings'
+    | 'audit_logs'
   >('overview');
   const isUrdu = language === 'urdu';
 
@@ -1442,7 +1445,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setProdVideoUploadSuccess(false);
   };
 
-  // Delete Handlers with Cloudinary Cleanups
+  // Delete Handlers with Cloudinary Cleanups & Security Audit Logging
   const handleDeleteDoctorAction = async (doc: Doctor) => {
     const confirmMsg = isUrdu
       ? `کیا آپ واقعی معالج (${doc.nameUrdu || doc.nameEnglish}) کو ڈیلیٹ کرنا چاہتے ہیں؟ اس سے منسلک تصویر بھی کلاؤڈنری سے ہمیشہ کے لیے ڈیلیٹ ہو جائے گی۔`
@@ -1453,6 +1456,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     try {
       await deleteDoctorApi(doc.id, doc.image);
     } catch (e) {}
+
+    // Security Audit Log
+    logCriticalOperation({
+      action: 'DOCTOR_DELETED',
+      actionLabelEnglish: 'Doctor Record Deleted',
+      actionLabelUrdu: 'معالج کا ریکارڈ حذف کیا گیا',
+      entityType: 'Doctor',
+      entityId: doc.id,
+      entityName: doc.nameEnglish || doc.nameUrdu || 'Doctor',
+      details: `Doctor "${doc.nameEnglish || doc.nameUrdu}" (${doc.specializationEnglish || doc.specializationUrdu || 'General'}) removed from clinical schedule and Cloudinary photo purged.`,
+      detailsUrdu: `ڈاکٹر "${doc.nameUrdu || doc.nameEnglish}" کو سسٹم اور کلاؤڈنری تصویر سے مستقل ڈیلیٹ کیا گیا۔`,
+      staffName: adminUsername || 'Super Admin',
+      staffRole: 'Administrator',
+      severity: 'critical',
+    });
+
     onDeleteDoctor(doc.id);
   };
 
@@ -1466,6 +1485,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     try {
       await deleteDiseaseApi(dis.id, dis.image || dis.imageUrl);
     } catch (e) {}
+
+    // Security Audit Log
+    logCriticalOperation({
+      action: 'DISEASE_DELETED',
+      actionLabelEnglish: 'Disease Guide Deleted',
+      actionLabelUrdu: 'بیماری کا گائیڈ حذف کیا گیا',
+      entityType: 'Disease',
+      entityId: dis.id,
+      entityName: dis.nameEnglish || dis.nameUrdu || 'Disease',
+      details: `Medical conditions guide for "${dis.nameEnglish || dis.nameUrdu}" removed from clinical knowledge base.`,
+      detailsUrdu: `طبی رہنمائی ریکارڈ برائے "${dis.nameUrdu || dis.nameEnglish}" ڈیلیٹ کر دیا گیا۔`,
+      staffName: adminUsername || 'Super Admin',
+      staffRole: 'Administrator',
+      severity: 'warning',
+    });
+
     onDeleteDisease(dis.id);
   };
 
@@ -1479,7 +1514,67 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     try {
       await deleteProductApi(prod.id, prod.image, prod.videoUrl);
     } catch (e) {}
+
+    // Security Audit Log
+    logCriticalOperation({
+      action: 'PRODUCT_DELETED',
+      actionLabelEnglish: 'Pharmacy Product Deleted',
+      actionLabelUrdu: 'دوا / پروڈکٹ حذف کی گئی',
+      entityType: 'Product',
+      entityId: prod.id,
+      entityName: prod.nameEnglish || prod.nameUrdu || 'Product',
+      details: `Catalog medicine "${prod.nameEnglish || prod.nameUrdu}" (Rs. ${prod.pricePKR}) deleted from pharmacy database.`,
+      detailsUrdu: `دوا / آئٹم "${prod.nameUrdu || prod.nameEnglish}" قیمت ${prod.pricePKR} روپے کو فارمیسی سے حذف کیا گیا۔`,
+      staffName: adminUsername || 'Super Admin',
+      staffRole: 'Administrator',
+      severity: 'critical',
+    });
+
     onDeleteProduct(prod.id);
+  };
+
+  // Centralized Appointment Status Transition Handler with Full Staff Attribution
+  const handleAdminUpdateAppointmentStatus = (
+    app: Appointment,
+    newStatus: 'Pending' | 'Approved' | 'Completed' | 'Cancelled'
+  ) => {
+    const targetId = app.id || (app as any)._id;
+    if (!targetId) return;
+    const oldStatus = app.status || 'Pending';
+
+    if (onUpdateAppointmentStatus) {
+      onUpdateAppointmentStatus(targetId, newStatus);
+    }
+
+    // Security & Clinical Audit Log
+    logCriticalOperation({
+      action: 'APPOINTMENT_STATUS_CHANGED',
+      actionLabelEnglish: `Appointment ${newStatus}`,
+      actionLabelUrdu:
+        newStatus === 'Approved'
+          ? 'اپائنٹمنٹ منظور کی گئی'
+          : newStatus === 'Completed'
+          ? 'معائنہ مکمل ہوا'
+          : 'اپائنٹمنٹ منسوخ کی گئی',
+      entityType: 'Appointment',
+      entityId: app.id,
+      entityName: app.patientName,
+      previousValue: oldStatus,
+      newValue: newStatus,
+      details: `Appointment #${app.id} for patient "${app.patientName}" (Phone: ${app.phone}) transitioned from "${oldStatus}" to "${newStatus}" with doctor ${app.doctorName || 'Senior Consultant'}.`,
+      detailsUrdu: `مریض "${app.patientName}" کی اپائنٹمنٹ #${app.id} کی حالت "${oldStatus}" سے بدل کر "${newStatus}" کی گئی۔`,
+      staffName: adminUsername || 'Super Admin',
+      staffRole: 'Clinical Administrator',
+      severity: newStatus === 'Cancelled' ? 'warning' : 'info',
+    });
+
+    if (newStatus === 'Approved') {
+      createAutoInvoiceFromAppointment(app, doctors)
+        .then((createdSlip) => {
+          setSlipsList((prev) => [createdSlip, ...prev.filter((s) => s.id !== createdSlip.id)]);
+        })
+        .catch(() => {});
+    }
   };
 
   // If Admin not authenticated, render Admin Login Form
@@ -1711,6 +1806,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           {[
             { id: 'overview', label: isUrdu ? '📊 ڈیش بورڈ' : '📊 Dashboard & Analytics' },
             { id: 'financial_health', label: isUrdu ? '📈 مالیاتی صحت و شفٹ سمری' : '📈 Financial Health' },
+            { id: 'audit_logs', label: isUrdu ? '🛡️ کریٹیکل آڈٹ لاگ' : '🛡️ Critical Audit Log' },
             { id: 'ipd_ward', label: isUrdu ? '🏥 داخل مریض و وارڈ (IPD)' : '🏥 IPD & Ward Management' },
             { id: 'pharmacy_pos', label: isUrdu ? '💊 فارمیسی و POS کاؤنٹر' : '💊 Pharmacy POS & Batches' },
             { id: 'pathology_lab', label: isUrdu ? '🔬 پیتھالوجی و لیب ٹیسٹ' : '🔬 Pathology Lab & Tests' },
@@ -1757,6 +1853,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 }
               />
             </React.Suspense>
+          </div>
+        )}
+
+        {/* Dedicated Critical Operations & Security Audit Log Tab */}
+        {activeTab === 'audit_logs' && (
+          <div className="space-y-6">
+            <AdminAuditLogsSection
+              isUrdu={isUrdu}
+              onNavigateTab={(targetTab) => setActiveTab(targetTab as any)}
+            />
           </div>
         )}
 
@@ -2086,6 +2192,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   if (confirm(isUrdu ? 'کیا آپ یہ منی سلپ حذف کرنا چاہتے ہیں؟' : 'Delete this money slip?')) {
                                     setSlipsList(slipsList.filter((s) => s.id !== slip.id));
                                     deleteSlipApi(slip.id).catch(() => {});
+                                    logCriticalOperation({
+                                      action: 'SLIP_DELETED',
+                                      actionLabelEnglish: 'Patient Invoice Deleted',
+                                      actionLabelUrdu: 'مریض کی رسید حذف کی گئی',
+                                      entityType: 'MoneySlip',
+                                      entityId: slip.slipNo,
+                                      entityName: slip.patientName,
+                                      details: `Invoice #${slip.slipNo} for patient "${slip.patientName}" (Total: Rs. ${slip.totalAmount}) deleted by admin.`,
+                                      detailsUrdu: `رسید #${slip.slipNo} برائے مریض "${slip.patientName}" رقم ${slip.totalAmount} روپے کو ڈیلیٹ کیا گیا۔`,
+                                      staffName: adminUsername || 'Super Admin',
+                                      staffRole: 'Billing Auditor',
+                                      severity: 'critical',
+                                    });
                                   }
                                 }}
                                 className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg transition-colors cursor-pointer"
@@ -4683,13 +4802,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             </button>
                             <button
                               type="button"
-                              onClick={() => {
-                                const targetId = app.id || (app as any)._id;
-                                if (onUpdateAppointmentStatus && targetId) onUpdateAppointmentStatus(targetId, 'Approved');
-                                createAutoInvoiceFromAppointment(app, doctors).then((createdSlip) => {
-                                  setSlipsList((prev) => [createdSlip, ...prev.filter((s) => s.id !== createdSlip.id)]);
-                                }).catch(() => {});
-                              }}
+                              onClick={() => handleAdminUpdateAppointmentStatus(app, 'Approved')}
                               className="bg-emerald-700 hover:bg-emerald-800 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-xs"
                               title={isUrdu ? 'منظور کریں' : 'Approve Appointment'}
                             >
@@ -4697,10 +4810,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             </button>
                             <button
                               type="button"
-                              onClick={() => {
-                                const targetId = app.id || (app as any)._id;
-                                if (onUpdateAppointmentStatus && targetId) onUpdateAppointmentStatus(targetId, 'Completed');
-                              }}
+                              onClick={() => handleAdminUpdateAppointmentStatus(app, 'Completed')}
                               className="bg-teal-700 hover:bg-teal-800 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer shadow-xs"
                               title={isUrdu ? 'مکمل کریں' : 'Mark as Completed'}
                             >
@@ -4708,10 +4818,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             </button>
                             <button
                               type="button"
-                              onClick={() => {
-                                const targetId = app.id || (app as any)._id;
-                                if (onUpdateAppointmentStatus && targetId) onUpdateAppointmentStatus(targetId, 'Cancelled');
-                              }}
+                              onClick={() => handleAdminUpdateAppointmentStatus(app, 'Cancelled')}
                               className="bg-rose-100 hover:bg-rose-200 text-rose-800 text-[10px] font-bold px-2.5 py-1 rounded-lg border border-rose-300 transition-colors cursor-pointer"
                               title={isUrdu ? 'منسوخ کریں' : 'Cancel Appointment'}
                             >
