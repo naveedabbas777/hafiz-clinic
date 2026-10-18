@@ -20,7 +20,9 @@ function loadRuntimeEnv(envPath = path.resolve(process.cwd(), '.env')) {
     return false;
   }
 
-  const result = dotenv.config({ path: envPath, override: false });
+  // If process.env.MONGODB_URI is default localhost or not set, allow .env to override
+  const isDefaultLocalMongo = !process.env.MONGODB_URI || process.env.MONGODB_URI.includes('localhost:27017') || process.env.MONGODB_URI.includes('127.0.0.1:27017');
+  const result = dotenv.config({ path: envPath, override: isDefaultLocalMongo });
 
   if (result.error) {
     console.warn(`[env] Failed to load ${envPath}: ${result.error.message}`);
