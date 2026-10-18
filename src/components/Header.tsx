@@ -20,6 +20,7 @@ import {
   ChevronDown,
   Sparkles,
   KeyRound,
+  Youtube,
 } from 'lucide-react';
 import { ClinicSettings, StaffUser } from '../types';
 
@@ -52,6 +53,31 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isStaffMenuDropdownOpen, setIsStaffMenuDropdownOpen] = useState(false);
+  const [isYouTubeMenuOpen, setIsYouTubeMenuOpen] = useState(false);
+
+  const officialYouTubeChannels = [
+    {
+      id: 'yt-1',
+      name: 'Guldasta-e-Sagheer',
+      nameUrdu: 'گلدستہ صغیر',
+      handle: '@guldasta-e-sagheer',
+      url: 'https://youtube.com/@guldasta-e-sagheer?si=1GV-sLdp9Kv9Zfd0',
+    },
+    {
+      id: 'yt-2',
+      name: 'Love 1s Life',
+      nameUrdu: 'لو ونز لائف',
+      handle: '@love1slife',
+      url: 'https://youtube.com/@love1slife?si=csaMQh87B2awoDii',
+    },
+    {
+      id: 'yt-3',
+      name: 'Good P Live',
+      nameUrdu: 'گڈ پی لائیو',
+      handle: '@goodplive',
+      url: 'https://youtube.com/@goodplive?si=O_OeWKZpMHKOTIem',
+    },
+  ];
 
   const navLinks = [
     { id: 'home', labelUrdu: 'ہوم', labelEnglish: 'Home' },
@@ -101,16 +127,17 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* Right Contact Quick Action Buttons */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
             <a
-              href={`tel:${settings.phone1}`}
-              className="flex items-center gap-1 hover:text-amber-300 transition-colors bg-emerald-800/60 px-2.5 py-1 rounded-lg text-xs"
+              href={`tel:${(settings.phone1 || '03450457087').replace(/[^0-9+]/g, '')}`}
+              className="flex items-center gap-1.5 hover:text-amber-300 transition-colors bg-emerald-800/80 px-2.5 py-1 rounded-lg text-xs font-mono font-bold"
+              title="Call Helpline: 03450457087"
             >
               <Phone className="w-3.5 h-3.5 text-amber-300" />
-              <span>{settings.phone1}</span>
+              <span>0345-0457087</span>
             </a>
             <a
-              href={`https://wa.me/${settings.whatsappNumber}`}
+              href={`https://wa.me/${(settings.whatsappNumber || '923450457087').replace(/[^0-9]/g, '')}`}
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-1 text-emerald-300 hover:text-white bg-emerald-700/80 px-2.5 py-1 rounded-lg text-xs font-semibold"
@@ -118,9 +145,56 @@ export const Header: React.FC<HeaderProps> = ({
               <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
               <span>WhatsApp Order</span>
             </a>
+
+            {/* YouTube Channels Multi-Link Dropdown */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsYouTubeMenuOpen(!isYouTubeMenuOpen)}
+                className="hidden sm:flex items-center gap-1.5 text-red-200 hover:text-white bg-red-950/80 hover:bg-red-900 border border-red-700/60 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                title="Official YouTube Channels"
+              >
+                <Youtube className="w-3.5 h-3.5 text-red-500 fill-current" />
+                <span>YouTube (3)</span>
+                <ChevronDown className="w-3 h-3 text-red-300" />
+              </button>
+
+              {isYouTubeMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setIsYouTubeMenuOpen(false)} />
+                  <div className="absolute right-0 mt-2 w-64 bg-slate-900 border border-red-800/80 rounded-xl shadow-2xl p-2 z-50 space-y-1.5 text-slate-100">
+                    <div className="text-[10px] font-bold text-red-400 uppercase tracking-wider px-2 py-1 border-b border-slate-800 flex items-center justify-between">
+                      <span>{language === 'urdu' ? 'آفیشل یوٹیوب چینلز' : 'Official YouTube Channels'}</span>
+                      <span className="text-[9px] bg-red-600/30 text-red-300 px-1.5 py-0.5 rounded font-mono">3 Channels</span>
+                    </div>
+                    {officialYouTubeChannels.map((ch) => (
+                      <a
+                        key={ch.id}
+                        href={ch.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={() => setIsYouTubeMenuOpen(false)}
+                        className="flex items-center gap-2.5 p-2 rounded-lg hover:bg-red-950/60 hover:border-red-700/50 border border-transparent transition-colors group"
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-red-600/20 text-red-400 group-hover:bg-red-600 group-hover:text-white flex items-center justify-center shrink-0 transition-colors">
+                          <Youtube className="w-4 h-4 fill-current" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-xs text-white group-hover:text-red-300 truncate">
+                            {language === 'urdu' ? ch.nameUrdu : ch.name}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono truncate">{ch.handle}</div>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
             <button
               onClick={() => setLanguage(language === 'urdu' ? 'english' : 'urdu')}
-              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded-lg text-xs text-amber-200 border border-amber-300/30 font-bold"
+              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded-lg text-xs text-amber-200 border border-amber-300/30 font-bold cursor-pointer"
             >
               <Globe className="w-3.5 h-3.5" />
               {language === 'urdu' ? 'English' : 'اردو'}
@@ -369,9 +443,66 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </div>
 
+          {/* Mobile Contact Quick Actions */}
+          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">
+            <a
+              href={`tel:${(settings.phone1 || '03450457087').replace(/[^0-9+]/g, '')}`}
+              className="bg-emerald-800 hover:bg-emerald-700 text-white font-mono font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow"
+            >
+              <Phone className="w-3.5 h-3.5 text-amber-300" />
+              <span>0345-0457087</span>
+            </a>
+            <a
+              href={`https://wa.me/${(settings.whatsappNumber || '923450457087').replace(/[^0-9]/g, '')}`}
+              target="_blank"
+              rel="noreferrer"
+              className="bg-teal-800 hover:bg-teal-700 text-white font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 shadow"
+            >
+              <MessageCircle className="w-3.5 h-3.5 text-emerald-300" />
+              <span>WhatsApp Order</span>
+            </a>
+          </div>
+
+          {/* Mobile YouTube Official Channels */}
+          <div className="pt-2 border-t border-slate-800 space-y-2">
+            <div className="flex items-center justify-between text-xs font-bold text-red-400 px-1">
+              <span className="flex items-center gap-1.5">
+                <Youtube className="w-4 h-4 fill-current text-red-500" />
+                <span>{language === 'urdu' ? 'ہمارے آفیشل یوٹیوب چینلز' : 'Official YouTube Channels'}</span>
+              </span>
+              <span className="text-[10px] bg-red-950 text-red-300 px-2 py-0.5 rounded border border-red-800/40 font-bold">
+                Subscribe
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-1.5">
+              {officialYouTubeChannels.map((ch) => (
+                <a
+                  key={ch.id}
+                  href={ch.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-between p-2 rounded-xl bg-slate-800 hover:bg-red-950/60 border border-slate-700/80 hover:border-red-600/50 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-lg bg-red-600 flex items-center justify-center text-white shrink-0">
+                      <Youtube className="w-3.5 h-3.5 fill-current" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold text-white">
+                        {language === 'urdu' ? ch.nameUrdu : ch.name}
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono">{ch.handle}</div>
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-bold text-red-400">Visit →</span>
+                </a>
+              ))}
+            </div>
+          </div>
+
           <button
             onClick={() => setLanguage(language === 'urdu' ? 'english' : 'urdu')}
-            className="w-full bg-slate-800 hover:bg-slate-700 py-2.5 rounded-xl text-center text-amber-200 border border-amber-300/30 flex items-center justify-center gap-1.5 text-xs font-bold"
+            className="w-full bg-slate-800 hover:bg-slate-700 py-2.5 rounded-xl text-center text-amber-200 border border-amber-300/30 flex items-center justify-center gap-1.5 text-xs font-bold cursor-pointer"
           >
             <Globe className="w-4 h-4" />
             <span>{language === 'urdu' ? 'English (تبدیل کریں)' : 'اردو (Switch to Urdu)'}</span>

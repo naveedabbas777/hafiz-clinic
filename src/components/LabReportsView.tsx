@@ -315,7 +315,7 @@ export const LabReportsView: React.FC<LabReportsViewProps> = ({ language = 'engl
                   {isUrdu ? 'کوئی رپورٹ نہیں ملی! برائے مہربانی اپنا MRN نمبر دوبارہ چیک کریں۔' : 'No Lab Report Found for this MRN! Please re-check your MRN ID.'}
                 </p>
                 <p className="text-xs text-red-700">
-                  {isUrdu ? 'مدد کے لیے واٹس ایپ ہیلپ لائن 0300-1234567 پر رابطہ کریں۔' : 'For assistance, contact WhatsApp Helpline 0300-1234567.'}
+                  {isUrdu ? 'مدد کے لیے واٹس ایپ ہیلپ لائن 0345-0457087 پر رابطہ کریں۔' : 'For assistance, contact WhatsApp Helpline 0345-0457087.'}
                 </p>
               </div>
             )}

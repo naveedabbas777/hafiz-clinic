@@ -211,6 +211,16 @@ export interface LabReport {
   summary: string;
 }
 
+export interface YouTubeChannel {
+  id: string;
+  name: string;
+  nameUrdu: string;
+  handle: string;
+  url: string;
+  descriptionUrdu?: string;
+  descriptionEnglish?: string;
+}
+
 export interface ClinicSettings {
   clinicNameUrdu: string;
   clinicNameEnglish: string;
@@ -225,9 +235,13 @@ export interface ClinicSettings {
   addressUrdu: string;
   addressEnglish: string;
   timingUrdu: string;
+  timingsUrdu?: string;
+  timingEnglish?: string;
   googleMapsUrl: string;
+  googleMapsEmbedUrl?: string;
   facebookUrl?: string;
   youtubeUrl?: string;
+  youtubeChannels?: YouTubeChannel[];
   // Dedicated Section Video Configurations
   clinicVideoUrl?: string;
   clinicVideoTitleUrdu?: string;

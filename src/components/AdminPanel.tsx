@@ -5200,7 +5200,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     type="text"
                     value={settings.googleMapsUrl || ''}
                     onChange={(e) => onUpdateSettings({ ...settings, googleMapsUrl: e.target.value })}
-                    placeholder="https://maps.google.com/..."
+                    placeholder="https://www.google.com/maps?q=32.048065,72.928998"
+                    className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-mono text-[11px]"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-slate-700 mb-1 font-bold">
+                    {isUrdu ? 'گوگل میپس ایمبیڈ لنک (Google Maps Embed iFrame URL)' : 'Google Maps Embed iFrame URL'}
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.googleMapsEmbedUrl || ''}
+                    onChange={(e) => onUpdateSettings({ ...settings, googleMapsEmbedUrl: e.target.value })}
+                    placeholder="https://www.google.com/maps/embed?pb=..."
                     className="w-full bg-slate-50 border border-slate-300 p-2.5 rounded-xl text-slate-900 font-mono text-[11px]"
                   />
                 </div>

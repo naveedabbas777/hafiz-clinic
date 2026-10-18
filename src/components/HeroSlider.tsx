@@ -129,7 +129,7 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({ onOpenAppointment, langu
             </button>
 
             <a
-              href="https://wa.me/923001234567"
+              href="https://wa.me/923450457087"
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-2 bg-slate-900/90 hover:bg-slate-800 text-emerald-300 hover:text-white font-bold px-5 py-3.5 rounded-xl text-sm border border-emerald-500/40 transition-all hover:scale-105"
@@ -139,11 +139,11 @@ export const HeroSlider: React.FC<HeroSliderProps> = ({ onOpenAppointment, langu
             </a>
 
             <a
-              href="tel:+923001234567"
+              href="tel:03450457087"
               className="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-5 py-3.5 rounded-xl text-sm shadow-md transition-all hover:scale-105"
             >
               <Phone className="w-5 h-5" />
-              <span>{isUrdu ? 'کال کریں: 0300-1234567' : 'Call: 0300-1234567'}</span>
+              <span>{isUrdu ? 'کال کریں: 0345-0457087' : 'Call: 0345-0457087'}</span>
             </a>
           </div>
         </div>

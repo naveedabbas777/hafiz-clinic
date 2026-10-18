@@ -4,10 +4,10 @@ export function printPrescriptionHtml(rx: Prescription, clinicSettings?: any) {
   const cName = clinicSettings?.clinicNameUrdu || 'حافظ کلینک اینڈ ہربل ریسرچ سینٹر';
   const cNameEn = clinicSettings?.clinicNameEnglish || 'Hafiz Clinic & Herbal Research Center';
   const cTagline = clinicSettings?.taglineUrdu || 'قدرتی جڑی بوٹیوں سے مستند و جدید علاج — کمپیوٹرائزڈ آئی سینٹر و فزیوتھراپی';
-  const cAddress = clinicSettings?.addressUrdu || 'نزد مین مارکیٹ، حافظ آباد روڈ، لاہور / گوجرانوالہ، پنجاب پاکستان';
-  const cPhone = clinicSettings?.phone1 || '0300-1234567';
-  const cWhatsApp = clinicSettings?.whatsappNumber || '0300-1234567';
-  const cPhc = clinicSettings?.phcApprovalNo || 'PHC-REG-786/2026';
+  const cAddress = clinicSettings?.addressUrdu || 'حافظ کلینک، مین روڈ، سرگودھا / کوٹ مومن، پنجاب، پاکستان';
+  const cPhone = clinicSettings?.phone1 || '03450457087';
+  const cWhatsApp = clinicSettings?.whatsappNumber || '03450457087';
+  const cPhc = clinicSettings?.phcApprovalNo || 'PHC-REG-849201';
 
   const html = `
     <!DOCTYPE html>

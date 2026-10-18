@@ -13,6 +13,7 @@ import {
 import { Disease, Product, OrderItem, Doctor, Appointment, Order, ClinicSettings, HealthArticle } from './types';
 import { getAppointmentsApi, createAppointmentApi, updateAppointmentApi, deleteProductApi, deleteDoctorApi, deleteDiseaseApi } from './services/api';
 import { createAutoInvoiceFromAppointment } from './services/billingService';
+import { Phone, MessageCircle, MapPin, Youtube, ExternalLink, Navigation, Clock, ShieldCheck } from 'lucide-react';
 
 // Immediate critical-path components for fast initial FCP/LCP
 import { Header } from './components/Header';
@@ -67,7 +68,40 @@ export default function App() {
   }, [language]);
 
   // Dynamic States
-  const [settings, setSettings] = useState<ClinicSettings>(initialClinicSettings);
+  const [settings, setSettings] = useState<ClinicSettings>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('hafiz_clinic_settings_v4') || localStorage.getItem('hafiz_clinic_settings_v3');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          return {
+            ...initialClinicSettings,
+            ...parsed,
+            phone1: '03450457087',
+            phone2: '03450457087',
+            whatsappNumber: '923450457087',
+            googleMapsUrl: initialClinicSettings.googleMapsUrl,
+            googleMapsEmbedUrl: initialClinicSettings.googleMapsEmbedUrl,
+            youtubeChannels: initialClinicSettings.youtubeChannels,
+          };
+        } catch {
+          // fallback to initialClinicSettings
+        }
+      }
+    }
+    return initialClinicSettings;
+  });
+
+  const handleUpdateSettings = (newSettings: ClinicSettings) => {
+    setSettings(newSettings);
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('hafiz_clinic_settings_v4', JSON.stringify(newSettings));
+      } catch {
+        // ignore quota errors
+      }
+    }
+  };
   const [doctors, setDoctors] = useState<Doctor[]>(initialDoctors);
   const [diseases, setDiseases] = useState<Disease[]>(initialDiseases);
   const [products, setProducts] = useState<Product[]>(initialProducts);
@@ -495,15 +529,201 @@ export default function App() {
           )}
 
           {activeView === 'contact' && (
-            <div className="py-16 bg-white max-w-4xl mx-auto px-4 space-y-8">
-              <h2 className="text-3xl font-black text-center">
-                {isUrdu ? 'رابطہ فارم اور پتہ (Contact & Location)' : 'Contact Us & Clinic Location'}
-              </h2>
-              <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-200 space-y-3 text-sm">
-                <div><strong>{isUrdu ? 'پتہ:' : 'Address:'}</strong> {isUrdu ? settings.addressUrdu : settings.addressEnglish}</div>
-                <div><strong>{isUrdu ? 'فون نمبرز:' : 'Phone Numbers:'}</strong> {settings.phone1} / {settings.phone2}</div>
-                <div><strong>{isUrdu ? 'واٹس ایپ:' : 'WhatsApp:'}</strong> {settings.whatsappNumber}</div>
-                <div><strong>{isUrdu ? 'پنجاب ہیلتھ کیئر کمیشن منظور شدہ:' : 'Punjab Healthcare Commission Reg No:'}</strong> {settings.phcApprovalNo}</div>
+            <div className="py-12 bg-slate-50 min-h-screen">
+              <div className="max-w-5xl mx-auto px-4 space-y-8">
+                <div className="text-center space-y-2">
+                  <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full uppercase tracking-wider">
+                    {isUrdu ? 'براہ راست رابطہ و لوکیشن' : 'Direct Helpline & Clinic Location'}
+                  </span>
+                  <h2 className="text-3xl sm:text-4xl font-black text-slate-900">
+                    {isUrdu ? 'حافظ کلینک رابطہ اور گوگل میپ لوکیشن' : 'Contact Us & Clinic GPS Location'}
+                  </h2>
+                  <p className="text-sm text-slate-600 max-w-2xl mx-auto">
+                    {isUrdu
+                      ? 'مریضوں کی رہنمائی، او پی ڈی معائنے، آن لائن میڈیسن آرڈر اور کلینک تشریف لانے کے لیے ہم سے رابطہ کریں:'
+                      : 'Reach our clinical team for OPD appointments, medicine delivery, or turn-by-turn navigation:'}
+                  </p>
+                </div>
+
+                {/* Primary Contact Cards Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <a
+                    href={`tel:${(settings.phone1 || '03450457087').replace(/[^0-9+]/g, '')}`}
+                    className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-emerald-500 hover:shadow-md transition-all flex items-center gap-4 group"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                      <Phone className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-500 font-bold uppercase block">
+                        {isUrdu ? 'کال ہیلپ لائن' : 'Call Helpline'}
+                      </span>
+                      <span className="text-base font-black font-mono text-emerald-950 group-hover:text-emerald-700">
+                        {settings.phone1 || '0345-0457087'}
+                      </span>
+                      <span className="text-[10px] text-emerald-600 font-semibold block">
+                        {isUrdu ? 'فوری کال ملائیں' : 'Tap to Call'}
+                      </span>
+                    </div>
+                  </a>
+
+                  <a
+                    href={`https://wa.me/${(settings.whatsappNumber || '923450457087').replace(/[^0-9]/g, '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:border-emerald-500 hover:shadow-md transition-all flex items-center gap-4 group"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                      <MessageCircle className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-500 font-bold uppercase block">
+                        {isUrdu ? 'واٹس ایپ سروس' : 'WhatsApp Order'}
+                      </span>
+                      <span className="text-base font-black font-mono text-emerald-950 group-hover:text-emerald-700">
+                        0{(settings.whatsappNumber || '923450457087').replace(/^92/, '')}
+                      </span>
+                      <span className="text-[10px] text-emerald-600 font-semibold block">
+                        {isUrdu ? 'میسج بھیجیں' : 'Chat on WhatsApp'}
+                      </span>
+                    </div>
+                  </a>
+
+                  <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                      <Clock className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <span className="text-[11px] text-slate-500 font-bold uppercase block">
+                        {isUrdu ? 'او پی ڈی ٹائمنگ' : 'OPD Hours'}
+                      </span>
+                      <span className="text-xs font-bold text-slate-900 block">
+                        {isUrdu ? settings.timingUrdu : settings.timingEnglish || '8:00 AM - 8:00 PM'}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-semibold block">
+                        {isUrdu ? 'ہفتے کے تمام 7 دن' : '7 Days a Week'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Google Maps Embed with Directions Link */}
+                <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+                  <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 border-b border-slate-100 pb-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow">
+                        <MapPin className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black text-slate-900">
+                          {isUrdu ? 'گوگل میپ لوکیشن و کلینک پتہ' : 'Clinic Location & Navigation'}
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          {isUrdu ? settings.addressUrdu : settings.addressEnglish}
+                        </p>
+                      </div>
+                    </div>
+
+                    <a
+                      href={settings.googleMapsUrl || 'https://www.google.com/maps?q=32.04806537151092,72.92899862887525'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-4 py-2.5 rounded-xl text-xs shadow transition-all hover:scale-105 self-start sm:self-auto cursor-pointer"
+                    >
+                      <Navigation className="w-4 h-4 text-amber-300" />
+                      <span>{isUrdu ? 'گوگل میپ پر راستہ کھولیں' : 'Open in Google Maps'}</span>
+                    </a>
+                  </div>
+
+                  <div className="overflow-hidden rounded-2xl border border-slate-200 shadow-inner w-full aspect-[16/9] sm:aspect-[21/9] max-h-96">
+                    <iframe
+                      title="Clinic Google Maps Location Embed"
+                      src={settings.googleMapsEmbedUrl || 'https://www.google.com/maps/embed?pb=!1m17!1m12!1m3!1d20504.00514421851!2d72.92899862887525!3d32.04806537151092!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m2!1m1!2zMzLCsDAyJzQ4LjgiTiA3MsKwNTUnNTAuNSJF!5e0!3m2!1sen!2s!4v1792298252624!5m2!1sen!2s'}
+                      width="100%"
+                      height="100%"
+                      style={{ border: 0 }}
+                      allowFullScreen={true}
+                      loading="lazy"
+                      referrerPolicy="strict-origin-when-cross-origin"
+                      className="w-full h-full min-h-[300px]"
+                    />
+                  </div>
+                </div>
+
+                {/* Official YouTube Channels Section */}
+                <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+                  <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                    <div className="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center shadow">
+                      <Youtube className="w-6 h-6 fill-current" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-slate-900">
+                        {isUrdu ? 'ہمارے آفیشل یوٹیوب چینلز' : 'Our Official YouTube Channels'}
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        {isUrdu
+                          ? 'مفید طبی معلومات اور گھریلو نسخہ جات کے لیے ہمارے یوٹیوب چینلز وزٹ کریں'
+                          : 'Subscribe to our official YouTube channels for authentic health guidance:'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {[
+                      {
+                        name: 'Guldasta-e-Sagheer',
+                        nameUrdu: 'گلدستہ صغیر',
+                        handle: '@guldasta-e-sagheer',
+                        url: 'https://youtube.com/@guldasta-e-sagheer?si=1GV-sLdp9Kv9Zfd0',
+                        desc: isUrdu ? 'ہربل ہیلتھ و طب نبوی رہنمائی' : 'Herbal Health & Natural Remedies',
+                      },
+                      {
+                        name: 'Love 1s Life',
+                        nameUrdu: 'لو ونز لائف',
+                        handle: '@love1slife',
+                        url: 'https://youtube.com/@love1slife?si=csaMQh87B2awoDii',
+                        desc: isUrdu ? 'صحت مند لائف اسٹائل و فٹنس ٹپس' : 'Healthy Living & Wellness Advice',
+                      },
+                      {
+                        name: 'Good P Live',
+                        nameUrdu: 'گڈ پی لائیو',
+                        handle: '@goodplive',
+                        url: 'https://youtube.com/@goodplive?si=O_OeWKZpMHKOTIem',
+                        desc: isUrdu ? 'لائیو طبی نشریات و کلینک اپڈیٹس' : 'Live Health Broadcasts & Updates',
+                      },
+                    ].map((ch) => (
+                      <a
+                        key={ch.handle}
+                        href={ch.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="group p-4 rounded-2xl border border-slate-200 hover:border-red-500 bg-slate-50 hover:bg-white shadow-xs hover:shadow-md transition-all flex flex-col justify-between space-y-3 cursor-pointer"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-red-100 text-red-600 group-hover:bg-red-600 group-hover:text-white flex items-center justify-center transition-colors">
+                              <Youtube className="w-4 h-4 fill-current" />
+                            </div>
+                            <div>
+                              <h4 className="font-bold text-slate-900 group-hover:text-red-600 text-xs sm:text-sm transition-colors">
+                                {isUrdu ? ch.nameUrdu : ch.name}
+                              </h4>
+                              <span className="text-[10px] text-slate-500 font-mono font-semibold">
+                                {ch.handle}
+                              </span>
+                            </div>
+                          </div>
+                          <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-red-500 transition-colors" />
+                        </div>
+                        <p className="text-xs text-slate-600">{ch.desc}</p>
+                        <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[11px] text-red-600 font-bold group-hover:underline">
+                          <span>{isUrdu ? 'یوٹیوب پر دیکھیں' : 'Watch on YouTube'}</span>
+                          <span>→</span>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           )}
@@ -652,7 +872,7 @@ export default function App() {
               gallery={initialGallery}
               settings={settings}
               articles={articles}
-              onUpdateSettings={setSettings}
+              onUpdateSettings={handleUpdateSettings}
               onAddProduct={(p) => setProducts([p, ...products])}
               onDeleteProduct={(id) => {
                 const target = products.find((p) => p.id === id || (p as any)._id === id);

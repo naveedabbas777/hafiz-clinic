@@ -1351,7 +1351,7 @@ ${slip.instructions || 'ادویات وقت پر لیں اور پرہیز کا �
 ${slip.precautions ? `پرہیز: ${slip.precautions}` : ''}
 
 ━━━━━━━━━━━━━━━━━━━━
-📞 ہیلپ لائن: 0300-1234567 | حافظ کلینک`;
+📞 ہیلپ لائن: 0345-0457087 | حافظ کلینک`;
 
       const cleanPhone = (slip.patientPhone || activeContact.phone || '').replace(/[^0-9]/g, '');
       const targetPhone = cleanPhone.startsWith('92') ? cleanPhone : cleanPhone.startsWith('0') ? '92' + cleanPhone.slice(1) : '92' + cleanPhone;
