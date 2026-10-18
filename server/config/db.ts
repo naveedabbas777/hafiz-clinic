@@ -54,13 +54,6 @@ export async function connectDB(forceReload = false) {
     console.error(`[env] ${lastError}`);
     return false;
   }
-  // If URI is an unconfigured default localhost address, avoid failed connection attempts
-  if (uri.includes('localhost:27017') || uri.includes('127.0.0.1:27017')) {
-    lastError = 'Local MongoDB daemon is not running at 127.0.0.1:27017. Operating with in-memory clinical database.';
-    console.warn(`[db] ${lastError}`);
-    return false;
-  }
-
   try {
     if (mongoose.connection.readyState === 1) {
       return true;
@@ -73,7 +66,7 @@ export async function connectDB(forceReload = false) {
     return true;
   } catch (err: any) {
     lastError = err.message || 'Unknown MongoDB connection error';
-    console.warn(`[db] MongoDB Atlas connection unavailable (${lastError}). Operating with in-memory clinical database.`);
+    console.error('MongoDB Atlas Connection Error:', lastError);
     return false;
   }
 }

@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import { createServer as createViteServer } from 'vite';
 
 import { connectDB } from './server/config/db';
 import { authenticateToken } from './server/middleware/authMiddleware';
@@ -70,7 +71,6 @@ async function startServer() {
 
   // Vite Development / Production SPA Middleware
   if (process.env.NODE_ENV !== 'production') {
-    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
